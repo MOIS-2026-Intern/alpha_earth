@@ -29,10 +29,15 @@ if not PROJECT_ID:
     raise ValueError("EE_PROJECT_ID is missing. Set it in .env or your shell environment.")
 
 YEAR = int(os.environ.get("YEAR", "2024"))
-OUTPUT_HTML = os.environ.get("OUTPUT_HTML", "seoul_flood_risk_rf.html")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_HTML = os.environ.get(
+    "OUTPUT_HTML",
+    os.path.join(SCRIPT_DIR, "seoul_flood_risk_rf.html"),
+)
 ANALYSIS_SCALE = int(os.environ.get("ANALYSIS_SCALE", "30"))
 SEOUL_REFERENCE_GEOJSON = os.environ.get(
-    "SEOUL_REFERENCE_GEOJSON", "seoul_flood_reference_points.geojson"
+    "SEOUL_REFERENCE_GEOJSON",
+    os.path.join(SCRIPT_DIR, "source", "seoul_flood_reference_points.geojson"),
 )
 POSITIVE_POINTS = int(os.environ.get("POSITIVE_POINTS", "200"))
 NEGATIVE_POINTS = int(os.environ.get("NEGATIVE_POINTS", "200"))
