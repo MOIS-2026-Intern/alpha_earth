@@ -1,2 +1,4 @@
 earthengine-api>=1.7.22
 geemap>=0.37.2
+pyshp>=2.3.1
+requests>=2.31.0
