@@ -2,10 +2,10 @@
 __pycache__/
 *.pyc
 .DS_Store
+venv/
 
 # Local virtual environment
 alphaearth-env/
 
 # Generated map outputs
 *.html
-
