@@ -25,6 +25,34 @@ def load_env_file(path=".env"):
 
 load_env_file()
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def resolve_input_path(path, fallback_dir=None):
+    """상대 입력 경로를 현재 실행 위치와 스크립트 위치 기준으로 안전하게 해석한다."""
+    if os.path.isabs(path):
+        return path
+
+    candidates = [
+        os.path.abspath(path),
+        os.path.join(SCRIPT_DIR, path),
+    ]
+    if fallback_dir:
+        candidates.append(os.path.join(fallback_dir, os.path.basename(path)))
+
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return candidates[-1]
+
+
+def resolve_output_path(path):
+    """상대 출력 경로는 이 분석 스크립트 폴더 아래에 저장한다."""
+    if os.path.isabs(path):
+        return path
+    return os.path.join(SCRIPT_DIR, path)
+
+
 # 실행 환경에서 조정할 수 있는 주요 설정값들이다.
 # EE_PROJECT_ID만 필수이고, 나머지는 없으면 기본값을 사용한다.
 PROJECT_ID = os.environ.get("EE_PROJECT_ID")
@@ -32,15 +60,11 @@ if not PROJECT_ID:
     raise ValueError("EE_PROJECT_ID is missing. Set it in .env or your shell environment.")
 
 YEAR = int(os.environ.get("YEAR", "2024"))
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_HTML = os.environ.get(
-    "OUTPUT_HTML",
-    os.path.join(SCRIPT_DIR, "seoul_flood_risk_rf.html"),
-)
+OUTPUT_HTML = resolve_output_path(os.environ.get("OUTPUT_HTML", "seoul_flood_risk_rf.html"))
 ANALYSIS_SCALE = int(os.environ.get("ANALYSIS_SCALE", "30"))
-SEOUL_REFERENCE_GEOJSON = os.environ.get(
-    "SEOUL_REFERENCE_GEOJSON",
-    os.path.join(SCRIPT_DIR, "source", "seoul_flood_reference_points.geojson"),
+SEOUL_REFERENCE_GEOJSON = resolve_input_path(
+    os.environ.get("SEOUL_REFERENCE_GEOJSON", "source/seoul_flood_reference_points.geojson"),
+    fallback_dir=os.path.join(SCRIPT_DIR, "source"),
 )
 REFERENCE_POINT_LIMIT = int(os.environ.get("REFERENCE_POINT_LIMIT", "0"))
 POSITIVE_SAMPLE_POINTS = int(
