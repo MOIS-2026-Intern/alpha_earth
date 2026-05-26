@@ -6,6 +6,7 @@ import geemap
 
 
 def load_env_file(path=".env"):
+    """간단한 .env 파일을 읽어 환경변수로 등록한다."""
     if not os.path.exists(path):
         return
 
@@ -24,6 +25,8 @@ def load_env_file(path=".env"):
 
 load_env_file()
 
+# 실행 환경에서 조정할 수 있는 주요 설정값들이다.
+# EE_PROJECT_ID만 필수이고, 나머지는 없으면 기본값을 사용한다.
 PROJECT_ID = os.environ.get("EE_PROJECT_ID")
 if not PROJECT_ID:
     raise ValueError("EE_PROJECT_ID is missing. Set it in .env or your shell environment.")
@@ -39,19 +42,46 @@ SEOUL_REFERENCE_GEOJSON = os.environ.get(
     "SEOUL_REFERENCE_GEOJSON",
     os.path.join(SCRIPT_DIR, "source", "seoul_flood_reference_points.geojson"),
 )
-POSITIVE_POINTS = int(os.environ.get("POSITIVE_POINTS", "200"))
+REFERENCE_POINT_LIMIT = int(os.environ.get("REFERENCE_POINT_LIMIT", "0"))
+POSITIVE_SAMPLE_POINTS = int(
+    os.environ.get("POSITIVE_SAMPLE_POINTS", os.environ.get("POSITIVE_POINTS", "200"))
+)
 NEGATIVE_POINTS = int(os.environ.get("NEGATIVE_POINTS", "200"))
 NEGATIVE_BUFFER_M = int(os.environ.get("NEGATIVE_BUFFER_M", "300"))
 POSITIVE_BUFFER_M = int(os.environ.get("POSITIVE_BUFFER_M", "60"))
 HOTSPOT_PERCENTILE = int(os.environ.get("HOTSPOT_PERCENTILE", "95"))
+SPATIAL_BLOCK_DEGREES = float(os.environ.get("SPATIAL_BLOCK_DEGREES", "0.015"))
+SPATIAL_FOLDS = int(os.environ.get("SPATIAL_FOLDS", "5"))
+VALIDATION_FOLD = int(os.environ.get("VALIDATION_FOLD", "0"))
 
+# Google Earth Engine에 접속한다.
 ee.Initialize(project=PROJECT_ID)
 
 
-def add_random_column(fc, seed):
-    return fc.randomColumn(columnName="rand", seed=seed)
+def add_spatial_fold(fc):
+    """위도/경도 격자 블록을 기준으로 공간 검증 fold를 붙인다."""
+
+    def _add_fold(feature):
+        coords = feature.geometry().coordinates()
+        lon = ee.Number(coords.get(0))
+        lat = ee.Number(coords.get(1))
+        block_x = lon.add(180).divide(SPATIAL_BLOCK_DEGREES).floor()
+        block_y = lat.add(90).divide(SPATIAL_BLOCK_DEGREES).floor()
+        fold = (
+            block_x.multiply(73856093)
+            .add(block_y.multiply(19349663))
+            .mod(SPATIAL_FOLDS)
+            .int()
+        )
+        return feature.set({"block_x": block_x, "block_y": block_y, "fold": fold})
+
+    return fc.map(_add_fold)
 
 
+# -------------------------------------------------
+# Seoul boundary
+# -------------------------------------------------
+# geoBoundaries의 한국 ADM1 행정구역 중 서울 경계만 골라 분석 영역으로 사용한다.
 adm1 = ee.FeatureCollection("WM/geoLab/geoBoundaries/600/ADM1")
 kor_adm1 = adm1.filter(ee.Filter.eq("shapeGroup", "KOR"))
 seoul_fc = kor_adm1.filter(
@@ -67,8 +97,35 @@ if seoul_count == 0:
     raise ValueError("서울 경계를 찾지 못했습니다.")
 seoul = seoul_fc.geometry()
 
+# 서울을 일정한 위경도 격자로 나누고, 일부 격자 fold 전체를 검증 영역으로 남긴다.
+lonlat = ee.Image.pixelLonLat()
+block_x_img = lonlat.select("longitude").add(180).divide(SPATIAL_BLOCK_DEGREES).floor()
+block_y_img = lonlat.select("latitude").add(90).divide(SPATIAL_BLOCK_DEGREES).floor()
+spatial_fold = (
+    block_x_img.multiply(73856093)
+    .add(block_y_img.multiply(19349663))
+    .mod(SPATIAL_FOLDS)
+    .rename("spatial_fold")
+    .clip(seoul)
+)
+train_area_mask = spatial_fold.neq(VALIDATION_FOLD)
+valid_area_mask = spatial_fold.eq(VALIDATION_FOLD)
+print(
+    "Spatial validation:",
+    {
+        "block_degrees": SPATIAL_BLOCK_DEGREES,
+        "folds": SPATIAL_FOLDS,
+        "validation_fold": VALIDATION_FOLD,
+    },
+)
+
+# 서울시 침수 흔적/기준점 GeoJSON을 양성(label=1) 학습 데이터로 사용한다.
 with open(SEOUL_REFERENCE_GEOJSON, "r", encoding="utf-8") as f:
     seoul_reference_geojson = json.load(f)
+
+reference_features = seoul_reference_geojson["features"]
+if REFERENCE_POINT_LIMIT > 0:
+    reference_features = reference_features[:REFERENCE_POINT_LIMIT]
 
 positive_features = [
     ee.Feature(
@@ -78,21 +135,37 @@ positive_features = [
             "label": 1,
         },
     )
-    for feature in seoul_reference_geojson["features"][:POSITIVE_POINTS]
+    for feature in reference_features
 ]
-positive_points = ee.FeatureCollection(positive_features)
+positive_points = add_spatial_fold(ee.FeatureCollection(positive_features))
 positive_geom = positive_points.geometry()
+train_positive_points = positive_points.filter(ee.Filter.neq("fold", VALIDATION_FOLD))
+valid_positive_points = positive_points.filter(ee.Filter.eq("fold", VALIDATION_FOLD))
+train_positive_geom = train_positive_points.geometry()
+train_positive_count = train_positive_points.size().getInfo()
+valid_positive_count = valid_positive_points.size().getInfo()
+positive_fold_hist = positive_points.aggregate_histogram("fold").getInfo()
 print("Positive flood points:", len(positive_features))
+print("Positive points by spatial fold:", positive_fold_hist)
+print("Train / validation positive reference points:", train_positive_count, valid_positive_count)
+print("Sample points per class:", {"positive": POSITIVE_SAMPLE_POINTS, "negative": NEGATIVE_POINTS})
+if train_positive_count == 0 or valid_positive_count == 0:
+    raise ValueError(
+        "공간 검증 fold에 양성점이 부족합니다. VALIDATION_FOLD 또는 SPATIAL_BLOCK_DEGREES를 조정하세요."
+    )
 
 # -------------------------------------------------
 # Feature stack for Seoul
 # -------------------------------------------------
+# 침수 가능성과 관련된 설명변수(feature)를 Earth Engine 영상으로 만든다.
+# 각 픽셀은 경사, 하천 주변 지형, 물/도시화 정도, 저지대 정도, AlphaEarth 유사도 값을 갖게 된다.
 dem = ee.Image("USGS/SRTMGL1_003").clip(seoul)
 slope = ee.Terrain.slope(dem).rename("slope")
 merit = ee.Image("MERIT/Hydro/v1_0_1").clip(seoul)
 hnd = merit.select("hnd").rename("hnd")
 log_upa = merit.select("upa").add(1).log().rename("log_upa")
 
+# 장기간 물이 관측된 곳은 기존 수역일 가능성이 높으므로 침수 판단의 보조 특징으로 사용한다.
 water_occ = (
     ee.Image("JRC/GSW1_4/GlobalSurfaceWater")
     .select("occurrence")
@@ -102,6 +175,7 @@ water_occ = (
     .rename("water_occ")
 )
 
+# Dynamic World의 연평균 built/water 확률로 도시화 정도와 최근 물 영역을 반영한다.
 dw = (
     ee.ImageCollection("GOOGLE/DYNAMICWORLD/V1")
     .filterDate(f"{YEAR}-01-01", f"{YEAR+1}-01-01")
@@ -113,6 +187,8 @@ dw = (
 built = dw.select("built").rename("built")
 dw_water = dw.select("water").rename("dw_water")
 
+# 서울 내부의 상대 고도값을 0~1로 정규화한다.
+# 값이 클수록 서울 안에서 상대적으로 낮은 저지대라는 뜻이다.
 dem_stats = dem.reduceRegion(
     reducer=ee.Reducer.minMax(),
     geometry=seoul,
@@ -130,6 +206,9 @@ lowland = (
 )
 
 # AlphaEarth similarity to official Seoul flood positives
+# AlphaEarth/Satellite Embedding은 위성영상 패턴을 압축한 다중 밴드 표현이다.
+# 공식 침수 기준점 주변의 평균 임베딩과 각 픽셀의 임베딩 거리를 계산해,
+# 침수 기준점과 위성영상 패턴이 비슷한 곳일수록 alpha_score가 높아지도록 만든다.
 emb_collection = (
     ee.ImageCollection("GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL")
     .filterDate(f"{YEAR}-01-01", f"{YEAR+1}-01-01")
@@ -144,11 +223,13 @@ emb = emb_collection.mosaic().clip(seoul)
 band_names = emb.bandNames().getInfo()
 print("AlphaEarth bands:", band_names[:10], "...")
 
-emb_reference = emb.clip(positive_geom).unmask(0)
+# 학습 양성점 영역에서만 AlphaEarth 밴드별 평균값을 구한다.
+# 검증 fold의 양성점은 prototype 계산에서 제외해 AlphaEarth feature 누수를 막는다.
+emb_reference = emb.clip(train_positive_geom).unmask(0)
 reference_mean = ee.Dictionary(
     emb_reference.reduceRegion(
         reducer=ee.Reducer.mean(),
-        geometry=positive_geom,
+        geometry=train_positive_geom,
         scale=ANALYSIS_SCALE,
         maxPixels=1e9,
         bestEffort=True,
@@ -161,6 +242,7 @@ print("Valid AlphaEarth bands:", len(valid_band_names))
 if not valid_band_names:
     raise ValueError("AlphaEarth reference mean is empty.")
 
+# 각 픽셀과 양성 기준점 평균 임베딩 사이의 유클리드 거리를 계산한다.
 emb_valid = emb.select(valid_band_names).unmask(0)
 emb_mean_img = reference_mean.toImage(valid_band_names).rename(valid_band_names)
 alpha_distance = (
@@ -180,6 +262,7 @@ alpha_stats = alpha_distance.reduceRegion(
 ).getInfo()
 alpha_p5 = alpha_stats["alpha_distance_p5"]
 alpha_p95 = alpha_stats["alpha_distance_p95"]
+# 거리는 작을수록 기준점과 비슷하므로, 5~95 분위 범위로 뒤집어 0~1 유사도 점수로 변환한다.
 alpha_score = (
     ee.Image.constant(alpha_p95)
     .subtract(alpha_distance)
@@ -189,6 +272,7 @@ alpha_score = (
 )
 print("AlphaEarth similarity feature: enabled")
 
+# 랜덤포레스트가 사용할 모든 설명변수를 하나의 다중 밴드 영상으로 묶는다.
 feature_image = ee.Image.cat(
     [slope, hnd, log_upa, water_occ, built, lowland, alpha_score]
 )
@@ -196,14 +280,20 @@ feature_bands = feature_image.bandNames().getInfo()
 print("Feature bands:", feature_bands)
 
 # -------------------------------------------------
-# Negative background points inside Seoul
+# Train/validation samples inside Seoul
 # -------------------------------------------------
+# 음성(label=0) 후보 영역은 기존 수역과 전체 공식 침수 기준점 주변을 제외한 배경 지역으로 둔다.
+# 이후 train/validation 공간 fold를 적용해 서로 다른 공간 블록에서 샘플을 뽑는다.
 positive_buffer_mask = ee.Image.constant(0).byte().paint(
     positive_geom.buffer(NEGATIVE_BUFFER_M),
     1,
 )
 positive_train_mask = ee.Image.constant(0).byte().paint(
-    positive_points.map(lambda f: f.buffer(POSITIVE_BUFFER_M)),
+    train_positive_points.map(lambda f: f.buffer(POSITIVE_BUFFER_M)),
+    1,
+)
+positive_valid_mask = ee.Image.constant(0).byte().paint(
+    valid_positive_points.map(lambda f: f.buffer(POSITIVE_BUFFER_M)),
     1,
 )
 negative_mask = (
@@ -214,59 +304,48 @@ negative_mask = (
     .updateMask(positive_buffer_mask.eq(0))
     .rename("negative_mask")
 )
-candidate_negative_points = ee.FeatureCollection.randomPoints(
-    region=seoul,
-    points=NEGATIVE_POINTS * 20,
-    seed=42,
-    maxError=100,
-)
-negative_points = (
-    negative_mask.sampleRegions(
-        collection=candidate_negative_points,
+
+
+def sample_split(positive_mask, area_mask, seed):
+    """공간 fold별 양성/음성 영역에서 학습 또는 검증 샘플을 만든다."""
+    split_positive_mask = positive_mask.updateMask(area_mask)
+    split_negative_mask = negative_mask.updateMask(area_mask)
+    label_image = (
+        ee.Image.constant(0)
+        .clip(seoul)
+        .where(split_positive_mask.unmask(0).eq(1), 1)
+        .rename("label")
+    )
+    sampling_mask = (
+        split_negative_mask.unmask(0).add(split_positive_mask.unmask(0)).gt(0)
+    )
+    split_image = feature_image.addBands(label_image).updateMask(sampling_mask)
+    return split_image.stratifiedSample(
+        numPoints=0,
+        classBand="label",
+        classValues=[0, 1],
+        classPoints=[NEGATIVE_POINTS, POSITIVE_SAMPLE_POINTS],
+        region=seoul,
         scale=ANALYSIS_SCALE,
         geometries=True,
+        seed=seed,
         tileScale=4,
     )
-    .filter(ee.Filter.notNull(["negative_mask"]))
-    .limit(NEGATIVE_POINTS)
-    .map(lambda f: ee.Feature(f.geometry(), {"label": 0}))
-)
-negative_count = negative_points.size().getInfo()
-print("Negative background points:", negative_count)
-if negative_count == 0:
-    raise ValueError("Negative background points could not be sampled in Seoul.")
 
-# -------------------------------------------------
-# Train RF on Seoul positives/background
-# -------------------------------------------------
-label_image = ee.Image.constant(0).clip(seoul).where(positive_train_mask.eq(1), 1).rename(
-    "label"
-)
-sampling_mask = negative_mask.unmask(0).add(positive_train_mask).gt(0)
-training_image = feature_image.addBands(label_image).updateMask(sampling_mask)
 
-sampled = training_image.stratifiedSample(
-    numPoints=0,
-    classBand="label",
-    classValues=[0, 1],
-    classPoints=[NEGATIVE_POINTS, POSITIVE_POINTS],
-    region=seoul,
-    scale=ANALYSIS_SCALE,
-    geometries=False,
-    seed=7,
-    tileScale=4,
-)
-
-sample_count = sampled.size().getInfo()
-print("Sampled points with features:", sample_count)
-
-sampled = add_random_column(sampled, 7)
-train_fc = sampled.filter(ee.Filter.lt("rand", 0.8))
-valid_fc = sampled.filter(ee.Filter.gte("rand", 0.8))
+# 양성/음성에서 지정한 개수만큼 계층 샘플링해 학습/검증 테이블을 별도로 만든다.
+train_fc = sample_split(positive_train_mask, train_area_mask, 7)
+valid_fc = sample_split(positive_valid_mask, valid_area_mask, 17)
 train_count = train_fc.size().getInfo()
 valid_count = valid_fc.size().getInfo()
-print("Train / valid:", train_count, valid_count)
+print("Train / validation sampled pixels:", train_count, valid_count)
+print("Train label histogram:", train_fc.aggregate_histogram("label").getInfo())
+print("Validation label histogram:", valid_fc.aggregate_histogram("label").getInfo())
+if train_count == 0 or valid_count == 0:
+    raise ValueError("공간 fold 기반 학습/검증 샘플을 만들지 못했습니다.")
 
+# 랜덤포레스트 분류기를 학습한다.
+# 출력 모드를 PROBABILITY로 설정해 각 픽셀의 label=1 가능성을 0~1 확률처럼 받는다.
 classifier = (
     ee.Classifier.smileRandomForest(
         numberOfTrees=100,
@@ -279,6 +358,7 @@ classifier = (
     .train(train_fc, "label", feature_bands)
 )
 
+# 학습/검증 데이터에서 0.5 기준으로 예측값을 만들고 혼동행렬, 정확도, kappa를 확인한다.
 train_eval = train_fc.classify(classifier, "probability").map(
     lambda f: f.set("predicted", ee.Number(f.get("probability")).gte(0.5).int())
 )
@@ -295,12 +375,15 @@ print("Valid kappa:", valid_conf.kappa().getInfo())
 # -------------------------------------------------
 # Predict flood susceptibility in Seoul
 # -------------------------------------------------
+# 학습된 모델을 서울 전체 픽셀에 적용해 침수 가능성 확률 지도를 만든다.
 seoul_probability = (
     feature_image.classify(classifier, "flood_prob")
     .rename("flood_prob")
     .clip(seoul)
 )
 
+# 확률값 상위 HOTSPOT_PERCENTILE 분위 이상만 hotspot으로 표시한다.
+# 기본값 95는 서울 전체 픽셀 중 상위 5%를 예상 침수 취약 지역으로 보는 설정이다.
 threshold = ee.Number(
     seoul_probability.reduceRegion(
         reducer=ee.Reducer.percentile([HOTSPOT_PERCENTILE]),
@@ -336,6 +419,8 @@ print("Seoul probability stats:", prob_stats)
 print(f"P{HOTSPOT_PERCENTILE} threshold:", threshold.getInfo())
 print("Hotspot area (km²):", hotspot_area)
 
+# 결과 확인용 대화형 HTML 지도를 만든다.
+# 경계, 기준점, AlphaEarth 임베딩, AlphaEarth 유사도, RF 확률, hotspot 레이어를 함께 저장한다.
 centroid = seoul.centroid().coordinates().getInfo()
 lon, lat = centroid[0], centroid[1]
 rgb_bands = valid_band_names[:3]
@@ -350,6 +435,16 @@ Map.addLayer(
     positive_points,
     {"color": "#542788"},
     "Official Seoul flood positives",
+)
+Map.addLayer(
+    valid_area_mask.selfMask(),
+    {"palette": ["#ffd92f"], "opacity": 0.25},
+    f"Validation spatial fold {VALIDATION_FOLD}",
+)
+Map.addLayer(
+    valid_positive_points,
+    {"color": "#1b9e77"},
+    "Held-out validation positives",
 )
 Map.addLayer(
     emb.select(rgb_bands),
