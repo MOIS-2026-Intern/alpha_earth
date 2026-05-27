@@ -296,12 +296,38 @@ alpha_score = (
 )
 print("AlphaEarth similarity feature: enabled")
 
-# 랜덤포레스트가 사용할 모든 설명변수를 하나의 다중 밴드 영상으로 묶는다.
+# 랜덤포레스트가 사용할 설명변수를 하나의 다중 밴드 영상으로 묶는다.
+static_feature_bands = ["slope", "hnd", "log_upa", "water_occ", "built", "lowland"]
+alpha_feature_bands = ["alpha_score"]
 feature_image = ee.Image.cat(
     [slope, hnd, log_upa, water_occ, built, lowland, alpha_score]
 )
 feature_bands = feature_image.bandNames().getInfo()
 print("Feature bands:", feature_bands)
+
+model_specs = [
+    {
+        "key": "no_alpha",
+        "name": "No-Alpha",
+        "bands": static_feature_bands,
+        "palette": ["#f7fcf5", "#74c476", "#238b45", "#00441b"],
+    },
+    {
+        "key": "alpha_only",
+        "name": "Alpha-only",
+        "bands": alpha_feature_bands,
+        "palette": ["#fff7ec", "#fdbb84", "#e34a33", "#7f0000"],
+    },
+    {
+        "key": "hybrid_basic",
+        "name": "Hybrid-basic",
+        "bands": static_feature_bands + alpha_feature_bands,
+        "palette": ["#f7fbff", "#6baed6", "#2171b5", "#08306b"],
+    },
+]
+print("Model comparison setup:")
+for spec in model_specs:
+    print(f"  {spec['name']}: {spec['bands']}")
 
 # -------------------------------------------------
 # Train/validation samples inside Seoul
@@ -368,83 +394,143 @@ print("Validation label histogram:", valid_fc.aggregate_histogram("label").getIn
 if train_count == 0 or valid_count == 0:
     raise ValueError("공간 fold 기반 학습/검증 샘플을 만들지 못했습니다.")
 
-# 랜덤포레스트 분류기를 학습한다.
-# 출력 모드를 PROBABILITY로 설정해 각 픽셀의 label=1 가능성을 0~1 확률처럼 받는다.
-classifier = (
-    ee.Classifier.smileRandomForest(
-        numberOfTrees=100,
-        variablesPerSplit=3,
-        minLeafPopulation=2,
-        bagFraction=0.7,
-        seed=13,
+# -------------------------------------------------
+# Compare minimal baseline models
+# -------------------------------------------------
+# 같은 공간 검증 split에서 AlphaEarth를 뺀 모델, AlphaEarth만 쓴 모델,
+# 두 feature 세트를 합친 기본 hybrid 모델을 비교한다.
+
+
+def train_rf(input_bands):
+    return (
+        ee.Classifier.smileRandomForest(
+            numberOfTrees=100,
+            variablesPerSplit=min(3, len(input_bands)),
+            minLeafPopulation=2,
+            bagFraction=0.7,
+            seed=13,
+        )
+        .setOutputMode("PROBABILITY")
+        .train(train_fc, "label", input_bands)
     )
-    .setOutputMode("PROBABILITY")
-    .train(train_fc, "label", feature_bands)
-)
 
-# 학습/검증 데이터에서 0.5 기준으로 예측값을 만들고 혼동행렬, 정확도, kappa를 확인한다.
-train_eval = train_fc.classify(classifier, "probability").map(
-    lambda f: f.set("predicted", ee.Number(f.get("probability")).gte(0.5).int())
-)
-valid_eval = valid_fc.classify(classifier, "probability").map(
-    lambda f: f.set("predicted", ee.Number(f.get("probability")).gte(0.5).int())
-)
-train_conf = train_eval.errorMatrix("label", "predicted")
-valid_conf = valid_eval.errorMatrix("label", "predicted")
-print("Train confusion matrix:", train_conf.getInfo())
-print("Valid confusion matrix:", valid_conf.getInfo())
-print("Valid accuracy:", valid_conf.accuracy().getInfo())
-print("Valid kappa:", valid_conf.kappa().getInfo())
 
-# -------------------------------------------------
-# Predict flood susceptibility in Seoul
-# -------------------------------------------------
-# 학습된 모델을 서울 전체 픽셀에 적용해 침수 가능성 확률 지도를 만든다.
-seoul_probability = (
-    feature_image.classify(classifier, "flood_prob")
-    .rename("flood_prob")
-    .clip(seoul)
-)
+def evaluate_fc(fc, classifier):
+    evaluated = fc.classify(classifier, "probability").map(
+        lambda f: f.set("predicted", ee.Number(f.get("probability")).gte(0.5).int())
+    )
+    return evaluated.errorMatrix("label", "predicted")
 
-# 확률값 상위 HOTSPOT_PERCENTILE 분위 이상만 hotspot으로 표시한다.
-# 기본값 95는 서울 전체 픽셀 중 상위 5%를 예상 침수 취약 지역으로 보는 설정이다.
-threshold = ee.Number(
-    seoul_probability.reduceRegion(
-        reducer=ee.Reducer.percentile([HOTSPOT_PERCENTILE]),
+
+def probability_outputs(classifier, model_key):
+    prob_band = f"{model_key}_prob"
+    hotspot_band = f"{model_key}_hotspots"
+    probability = feature_image.classify(classifier, prob_band).rename(prob_band).clip(seoul)
+    threshold_value = ee.Number(
+        probability.reduceRegion(
+            reducer=ee.Reducer.percentile([HOTSPOT_PERCENTILE]),
+            geometry=seoul,
+            scale=ANALYSIS_SCALE,
+            maxPixels=1e9,
+        ).get(prob_band)
+    )
+    hotspot = probability.gte(threshold_value).selfMask().rename(hotspot_band)
+    stats = probability.reduceRegion(
+        reducer=ee.Reducer.minMax().combine(
+            reducer2=ee.Reducer.mean(),
+            sharedInputs=True,
+        ),
         geometry=seoul,
         scale=ANALYSIS_SCALE,
         maxPixels=1e9,
-    ).get("flood_prob")
-)
-hotspots = seoul_probability.gte(threshold).selfMask().rename("hotspots")
-
-prob_stats = seoul_probability.reduceRegion(
-    reducer=ee.Reducer.minMax().combine(
-        reducer2=ee.Reducer.mean(),
-        sharedInputs=True,
-    ),
-    geometry=seoul,
-    scale=ANALYSIS_SCALE,
-    maxPixels=1e9,
-).getInfo()
-hotspot_area = (
-    ee.Image.pixelArea()
-    .divide(1e6)
-    .updateMask(hotspots)
-    .reduceRegion(
-        reducer=ee.Reducer.sum(),
-        geometry=seoul,
-        scale=ANALYSIS_SCALE,
-        maxPixels=1e9,
+    ).getInfo()
+    hotspot_area_km2 = (
+        ee.Image.pixelArea()
+        .divide(1e6)
+        .updateMask(hotspot)
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=seoul,
+            scale=ANALYSIS_SCALE,
+            maxPixels=1e9,
+        )
+        .getInfo()
     )
-    .getInfo()
-)
+    return {
+        "probability": probability,
+        "hotspot": hotspot,
+        "threshold": threshold_value.getInfo(),
+        "stats": stats,
+        "hotspot_area_km2": hotspot_area_km2.get("area", 0),
+    }
+
+
+model_results = {}
+comparison_rows = []
+for spec in model_specs:
+    model_name = spec["name"]
+    model_key = spec["key"]
+    input_bands = spec["bands"]
+
+    classifier = train_rf(input_bands)
+    train_conf = evaluate_fc(train_fc, classifier)
+    valid_conf = evaluate_fc(valid_fc, classifier)
+    outputs = probability_outputs(classifier, model_key)
+
+    train_conf_info = train_conf.getInfo()
+    valid_conf_info = valid_conf.getInfo()
+    valid_accuracy = valid_conf.accuracy().getInfo()
+    valid_kappa = valid_conf.kappa().getInfo()
+
+    model_results[model_key] = {
+        **spec,
+        "classifier": classifier,
+        "train_confusion": train_conf_info,
+        "valid_confusion": valid_conf_info,
+        "valid_accuracy": valid_accuracy,
+        "valid_kappa": valid_kappa,
+        **outputs,
+    }
+    comparison_rows.append(
+        {
+            "model": model_name,
+            "valid_accuracy": valid_accuracy,
+            "valid_kappa": valid_kappa,
+            "p95_threshold": outputs["threshold"],
+            "hotspot_area_km2": outputs["hotspot_area_km2"],
+        }
+    )
+
+    print(f"\nModel: {model_name}")
+    print("  Bands:", input_bands)
+    print("  Train confusion matrix:", train_conf_info)
+    print("  Valid confusion matrix:", valid_conf_info)
+    print("  Valid accuracy:", valid_accuracy)
+    print("  Valid kappa:", valid_kappa)
+    print("  Probability stats:", outputs["stats"])
+    print(f"  P{HOTSPOT_PERCENTILE} threshold:", outputs["threshold"])
+    print("  Hotspot area (km²):", outputs["hotspot_area_km2"])
+
+print("\nModel comparison summary:")
+for row in comparison_rows:
+    print(row)
+
+hybrid_result = model_results["hybrid_basic"]
+
+# 이후 지도 레이어의 기본 결과는 Hybrid-basic 모델을 사용한다.
+seoul_probability = hybrid_result["probability"]
+hotspots = hybrid_result["hotspot"]
+threshold = hybrid_result["threshold"]
+prob_stats = hybrid_result["stats"]
+hotspot_area = {"area": hybrid_result["hotspot_area_km2"]}
+
+print("\nSelected map model: Hybrid-basic")
 print("Seoul probability stats:", prob_stats)
-print(f"P{HOTSPOT_PERCENTILE} threshold:", threshold.getInfo())
+print(f"P{HOTSPOT_PERCENTILE} threshold:", threshold)
 print("Hotspot area (km²):", hotspot_area)
 
 # 결과 확인용 대화형 HTML 지도를 만든다.
-# 경계, 기준점, AlphaEarth 임베딩, AlphaEarth 유사도, RF 확률, hotspot 레이어를 함께 저장한다.
+# 경계, 기준점, AlphaEarth 임베딩, 모델별 RF 확률, hotspot 레이어를 함께 저장한다.
 centroid = seoul.centroid().coordinates().getInfo()
 lon, lat = centroid[0], centroid[1]
 rgb_bands = valid_band_names[:3]
@@ -480,16 +566,18 @@ Map.addLayer(
     {"min": 0, "max": 1, "palette": ["#f7f7f7", "#fdb863", "#e66101", "#b2182b"]},
     "AlphaEarth flood similarity",
 )
-Map.addLayer(
-    seoul_probability,
-    {"min": 0, "max": 1, "palette": ["#f7fbff", "#6baed6", "#2171b5", "#08306b"]},
-    "RF flood probability",
-)
-Map.addLayer(
-    hotspots,
-    {"palette": ["red"]},
-    f"Hotspots (top {100 - HOTSPOT_PERCENTILE}%)",
-)
+for spec in model_specs:
+    result = model_results[spec["key"]]
+    Map.addLayer(
+        result["probability"],
+        {"min": 0, "max": 1, "palette": spec["palette"]},
+        f"RF probability ({spec['name']})",
+    )
+    Map.addLayer(
+        result["hotspot"],
+        {"palette": [spec["palette"][-1]]},
+        f"Hotspots {spec['name']} (top {100 - HOTSPOT_PERCENTILE}%)",
+    )
 Map.addLayerControl()
 Map.to_html(OUTPUT_HTML)
 print(f"Saved: {OUTPUT_HTML}")
