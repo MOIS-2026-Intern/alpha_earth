@@ -53,6 +53,15 @@ def resolve_output_path(path):
     return os.path.join(SCRIPT_DIR, path)
 
 
+def parse_int_list(raw_value):
+    """쉼표로 구분된 정수 환경변수 값을 리스트로 변환한다."""
+    return [
+        int(value.strip())
+        for value in raw_value.split(",")
+        if value.strip()
+    ]
+
+
 # 실행 환경에서 조정할 수 있는 주요 설정값들이다.
 # EE_PROJECT_ID만 필수이고, 나머지는 없으면 기본값을 사용한다.
 PROJECT_ID = os.environ.get("EE_PROJECT_ID")
@@ -77,6 +86,16 @@ HOTSPOT_PERCENTILE = int(os.environ.get("HOTSPOT_PERCENTILE", "95"))
 SPATIAL_BLOCK_DEGREES = float(os.environ.get("SPATIAL_BLOCK_DEGREES", "0.015"))
 SPATIAL_FOLDS = int(os.environ.get("SPATIAL_FOLDS", "5"))
 VALIDATION_FOLD = int(os.environ.get("VALIDATION_FOLD", "0"))
+RUN_BUFFER_SENSITIVITY = os.environ.get("RUN_BUFFER_SENSITIVITY", "1") == "1"
+POSITIVE_BUFFER_SWEEP_M = parse_int_list(
+    os.environ.get("POSITIVE_BUFFER_SWEEP_M", "30,60,90")
+)
+NEGATIVE_BUFFER_SWEEP_M = parse_int_list(
+    os.environ.get("NEGATIVE_BUFFER_SWEEP_M", "200,300,500")
+)
+BUFFER_SENSITIVITY_FOLDS = parse_int_list(
+    os.environ.get("BUFFER_SENSITIVITY_FOLDS", str(VALIDATION_FOLD))
+)
 
 # Google Earth Engine에 접속한다.
 ee.Initialize(project=PROJECT_ID)
@@ -247,116 +266,116 @@ emb = emb_collection.mosaic().clip(seoul)
 band_names = emb.bandNames().getInfo()
 print("AlphaEarth bands:", band_names[:10], "...")
 
-# 학습 양성점 영역에서만 AlphaEarth 밴드별 평균값을 구한다.
-# 검증 fold의 양성점은 prototype 계산에서 제외해 AlphaEarth feature 누수를 막는다.
-emb_reference = emb.clip(train_positive_geom).unmask(0)
-reference_mean = ee.Dictionary(
-    emb_reference.reduceRegion(
-        reducer=ee.Reducer.mean(),
-        geometry=train_positive_geom,
+# Hybrid-basic을 기준 모델로 고정한다.
+valid_band_names = band_names
+emb_valid = emb.select(valid_band_names).unmask(0)
+static_feature_image = ee.Image.cat([slope, hnd, log_upa, water_occ, built, lowland])
+static_feature_bands = static_feature_image.bandNames().getInfo()
+alpha_feature_bands = ["alpha_score"]
+hybrid_feature_bands = static_feature_bands + alpha_feature_bands
+print("Fixed hybrid model bands:", hybrid_feature_bands)
+
+def make_negative_mask(negative_buffer_m):
+    """침수점 주변과 기존 수역을 제외한 음성 후보 영역을 만든다."""
+    positive_exclusion_mask = ee.Image.constant(0).byte().paint(
+        positive_geom.buffer(negative_buffer_m),
+        1,
+    )
+    return (
+        ee.Image.constant(1)
+        .clip(seoul)
+        .updateMask(water_occ.lt(0.2))
+        .updateMask(dw_water.lt(0.25))
+        .updateMask(positive_exclusion_mask.eq(0))
+        .rename("negative_mask")
+    )
+
+
+def make_alpha_score(reference_fc):
+    """해당 fold의 학습 양성점만 사용해 AlphaEarth 유사도 feature를 만든다."""
+    reference_geom = reference_fc.geometry()
+    reference_mean = ee.Dictionary(
+        emb.clip(reference_geom)
+        .unmask(0)
+        .reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=reference_geom,
+            scale=ANALYSIS_SCALE,
+            maxPixels=1e9,
+            bestEffort=True,
+            tileScale=4,
+        )
+    )
+    mean_img = reference_mean.toImage(valid_band_names).rename(valid_band_names)
+    alpha_distance = (
+        emb_valid.subtract(mean_img)
+        .pow(2)
+        .reduce(ee.Reducer.sum())
+        .sqrt()
+        .rename("alpha_distance")
+    )
+    alpha_stats = alpha_distance.reduceRegion(
+        reducer=ee.Reducer.percentile([5, 95]),
+        geometry=seoul,
         scale=ANALYSIS_SCALE,
         maxPixels=1e9,
         bestEffort=True,
         tileScale=4,
+    ).getInfo()
+    alpha_p5 = alpha_stats["alpha_distance_p5"]
+    alpha_p95 = alpha_stats["alpha_distance_p95"]
+    return (
+        ee.Image.constant(alpha_p95)
+        .subtract(alpha_distance)
+        .divide(ee.Image.constant(max(alpha_p95 - alpha_p5, 1e-6)))
+        .clamp(0, 1)
+        .rename("alpha_score")
     )
-)
-reference_mean_info = reference_mean.getInfo()
-valid_band_names = [b for b in band_names if b in reference_mean_info]
-print("Valid AlphaEarth bands:", len(valid_band_names))
-if not valid_band_names:
-    raise ValueError("AlphaEarth reference mean is empty.")
-
-# 각 픽셀과 양성 기준점 평균 임베딩 사이의 유클리드 거리를 계산한다.
-emb_valid = emb.select(valid_band_names).unmask(0)
-emb_mean_img = reference_mean.toImage(valid_band_names).rename(valid_band_names)
-alpha_distance = (
-    emb_valid.subtract(emb_mean_img)
-    .pow(2)
-    .reduce(ee.Reducer.sum())
-    .sqrt()
-    .rename("alpha_distance")
-)
-alpha_stats = alpha_distance.reduceRegion(
-    reducer=ee.Reducer.percentile([5, 95]),
-    geometry=seoul,
-    scale=ANALYSIS_SCALE,
-    maxPixels=1e9,
-    bestEffort=True,
-    tileScale=4,
-).getInfo()
-alpha_p5 = alpha_stats["alpha_distance_p5"]
-alpha_p95 = alpha_stats["alpha_distance_p95"]
-# 거리는 작을수록 기준점과 비슷하므로, 5~95 분위 범위로 뒤집어 0~1 유사도 점수로 변환한다.
-alpha_score = (
-    ee.Image.constant(alpha_p95)
-    .subtract(alpha_distance)
-    .divide(ee.Image.constant(max(alpha_p95 - alpha_p5, 1e-6)))
-    .clamp(0, 1)
-    .rename("alpha_score")
-)
-print("AlphaEarth similarity feature: enabled")
-
-# 랜덤포레스트가 사용할 설명변수를 하나의 다중 밴드 영상으로 묶는다.
-static_feature_bands = ["slope", "hnd", "log_upa", "water_occ", "built", "lowland"]
-alpha_feature_bands = ["alpha_score"]
-feature_image = ee.Image.cat(
-    [slope, hnd, log_upa, water_occ, built, lowland, alpha_score]
-)
-feature_bands = feature_image.bandNames().getInfo()
-print("Feature bands:", feature_bands)
-
-model_specs = [
-    {
-        "key": "no_alpha",
-        "name": "No-Alpha",
-        "bands": static_feature_bands,
-        "palette": ["#f7fcf5", "#74c476", "#238b45", "#00441b"],
-    },
-    {
-        "key": "alpha_only",
-        "name": "Alpha-only",
-        "bands": alpha_feature_bands,
-        "palette": ["#fff7ec", "#fdbb84", "#e34a33", "#7f0000"],
-    },
-    {
-        "key": "hybrid_basic",
-        "name": "Hybrid-basic",
-        "bands": static_feature_bands + alpha_feature_bands,
-        "palette": ["#f7fbff", "#6baed6", "#2171b5", "#08306b"],
-    },
-]
-print("Model comparison setup:")
-for spec in model_specs:
-    print(f"  {spec['name']}: {spec['bands']}")
-
-# -------------------------------------------------
-# Train/validation samples inside Seoul
-# -------------------------------------------------
-# 음성(label=0) 후보 영역은 기존 수역과 전체 공식 침수 기준점 주변을 제외한 배경 지역으로 둔다.
-# 이후 train/validation 공간 fold를 적용해 서로 다른 공간 블록에서 샘플을 뽑는다.
-positive_buffer_mask = ee.Image.constant(0).byte().paint(
-    positive_geom.buffer(NEGATIVE_BUFFER_M),
-    1,
-)
-positive_train_mask = ee.Image.constant(0).byte().paint(
-    train_positive_points.map(lambda f: f.buffer(POSITIVE_BUFFER_M)),
-    1,
-)
-positive_valid_mask = ee.Image.constant(0).byte().paint(
-    valid_positive_points.map(lambda f: f.buffer(POSITIVE_BUFFER_M)),
-    1,
-)
-negative_mask = (
-    ee.Image.constant(1)
-    .clip(seoul)
-    .updateMask(water_occ.lt(0.2))
-    .updateMask(dw_water.lt(0.25))
-    .updateMask(positive_buffer_mask.eq(0))
-    .rename("negative_mask")
-)
 
 
-def sample_split(positive_mask, area_mask, seed):
+fold_base_cache = {}
+
+
+def build_fold_base(validation_fold):
+    if validation_fold in fold_base_cache:
+        return fold_base_cache[validation_fold]
+
+    fold_train_positive = positive_points.filter(ee.Filter.neq("fold", validation_fold))
+    fold_valid_positive = positive_points.filter(ee.Filter.eq("fold", validation_fold))
+    fold_train_area = spatial_fold.neq(validation_fold)
+    fold_valid_area = spatial_fold.eq(validation_fold)
+    alpha_score = make_alpha_score(fold_train_positive)
+    feature_image = static_feature_image.addBands(alpha_score)
+    fold_base = {
+        "feature_image": feature_image,
+        "alpha_score": alpha_score,
+        "train_positive": fold_train_positive,
+        "valid_positive": fold_valid_positive,
+        "train_area_mask": fold_train_area,
+        "valid_area_mask": fold_valid_area,
+    }
+    fold_base_cache[validation_fold] = fold_base
+    return fold_base
+
+
+def build_hybrid_inputs(validation_fold, positive_buffer_m):
+    fold_base = build_fold_base(validation_fold)
+    positive_train_mask = ee.Image.constant(0).byte().paint(
+        fold_base["train_positive"].map(lambda f: f.buffer(positive_buffer_m)),
+        1,
+    )
+    positive_valid_mask = ee.Image.constant(0).byte().paint(
+        fold_base["valid_positive"].map(lambda f: f.buffer(positive_buffer_m)),
+        1,
+    )
+    return {
+        **fold_base,
+        "positive_train_mask": positive_train_mask,
+        "positive_valid_mask": positive_valid_mask,
+    }
+
+
+def sample_split(feature_image, positive_mask, negative_mask, area_mask, seed):
     """공간 fold별 양성/음성 영역에서 학습 또는 검증 샘플을 만든다."""
     split_positive_mask = positive_mask.updateMask(area_mask)
     split_negative_mask = negative_mask.updateMask(area_mask)
@@ -383,25 +402,11 @@ def sample_split(positive_mask, area_mask, seed):
     )
 
 
-# 양성/음성에서 지정한 개수만큼 계층 샘플링해 학습/검증 테이블을 별도로 만든다.
-train_fc = sample_split(positive_train_mask, train_area_mask, 7)
-valid_fc = sample_split(positive_valid_mask, valid_area_mask, 17)
-train_count = train_fc.size().getInfo()
-valid_count = valid_fc.size().getInfo()
-print("Train / validation sampled pixels:", train_count, valid_count)
-print("Train label histogram:", train_fc.aggregate_histogram("label").getInfo())
-print("Validation label histogram:", valid_fc.aggregate_histogram("label").getInfo())
-if train_count == 0 or valid_count == 0:
-    raise ValueError("공간 fold 기반 학습/검증 샘플을 만들지 못했습니다.")
-
-# -------------------------------------------------
-# Compare minimal baseline models
-# -------------------------------------------------
-# 같은 공간 검증 split에서 AlphaEarth를 뺀 모델, AlphaEarth만 쓴 모델,
-# 두 feature 세트를 합친 기본 hybrid 모델을 비교한다.
+def train_hybrid(train_fc):
+    return train_rf(train_fc, hybrid_feature_bands)
 
 
-def train_rf(input_bands):
+def train_rf(train_fc, input_bands):
     return (
         ee.Classifier.smileRandomForest(
             numberOfTrees=100,
@@ -422,115 +427,340 @@ def evaluate_fc(fc, classifier):
     return evaluated.errorMatrix("label", "predicted")
 
 
-def probability_outputs(classifier, model_key):
-    prob_band = f"{model_key}_prob"
-    hotspot_band = f"{model_key}_hotspots"
-    probability = feature_image.classify(classifier, prob_band).rename(prob_band).clip(seoul)
-    threshold_value = ee.Number(
-        probability.reduceRegion(
-            reducer=ee.Reducer.percentile([HOTSPOT_PERCENTILE]),
-            geometry=seoul,
-            scale=ANALYSIS_SCALE,
-            maxPixels=1e9,
-        ).get(prob_band)
-    )
-    hotspot = probability.gte(threshold_value).selfMask().rename(hotspot_band)
-    stats = probability.reduceRegion(
-        reducer=ee.Reducer.minMax().combine(
-            reducer2=ee.Reducer.mean(),
-            sharedInputs=True,
-        ),
-        geometry=seoul,
-        scale=ANALYSIS_SCALE,
-        maxPixels=1e9,
-    ).getInfo()
-    hotspot_area_km2 = (
-        ee.Image.pixelArea()
-        .divide(1e6)
-        .updateMask(hotspot)
-        .reduceRegion(
-            reducer=ee.Reducer.sum(),
-            geometry=seoul,
-            scale=ANALYSIS_SCALE,
-            maxPixels=1e9,
-        )
-        .getInfo()
-    )
-    return {
-        "probability": probability,
-        "hotspot": hotspot,
-        "threshold": threshold_value.getInfo(),
-        "stats": stats,
-        "hotspot_area_km2": hotspot_area_km2.get("area", 0),
+def classifier_importance(classifier, input_bands):
+    """RF 변수 중요도와 정규화된 중요도를 반환한다."""
+    explain_info = classifier.explain().getInfo()
+    raw_importance = explain_info.get("importance", {})
+    importance = {
+        band: float(raw_importance.get(band, 0))
+        for band in input_bands
     }
+    total = sum(importance.values())
+    normalized = {
+        band: (value / total if total else 0)
+        for band, value in importance.items()
+    }
+    return importance, normalized
 
 
-model_results = {}
-comparison_rows = []
-for spec in model_specs:
-    model_name = spec["name"]
-    model_key = spec["key"]
-    input_bands = spec["bands"]
+def run_hybrid_fold(
+    validation_fold,
+    positive_buffer_m=POSITIVE_BUFFER_M,
+    negative_buffer_m=NEGATIVE_BUFFER_M,
+    include_map_outputs=False,
+    include_importance=False,
+    input_bands=None,
+):
+    if input_bands is None:
+        input_bands = hybrid_feature_bands
 
-    classifier = train_rf(input_bands)
+    fold_inputs = build_hybrid_inputs(validation_fold, positive_buffer_m)
+    negative_mask = make_negative_mask(negative_buffer_m)
+    train_fc = sample_split(
+        fold_inputs["feature_image"],
+        fold_inputs["positive_train_mask"],
+        negative_mask,
+        fold_inputs["train_area_mask"],
+        700 + validation_fold,
+    )
+    valid_fc = sample_split(
+        fold_inputs["feature_image"],
+        fold_inputs["positive_valid_mask"],
+        negative_mask,
+        fold_inputs["valid_area_mask"],
+        1700 + validation_fold,
+    )
+    train_count = train_fc.size().getInfo()
+    valid_count = valid_fc.size().getInfo()
+    if train_count == 0 or valid_count == 0:
+        raise ValueError(f"Fold {validation_fold}에서 학습/검증 샘플을 만들지 못했습니다.")
+
+    classifier = train_rf(train_fc, input_bands)
     train_conf = evaluate_fc(train_fc, classifier)
     valid_conf = evaluate_fc(valid_fc, classifier)
-    outputs = probability_outputs(classifier, model_key)
-
-    train_conf_info = train_conf.getInfo()
-    valid_conf_info = valid_conf.getInfo()
-    valid_accuracy = valid_conf.accuracy().getInfo()
-    valid_kappa = valid_conf.kappa().getInfo()
-
-    model_results[model_key] = {
-        **spec,
+    result = {
+        "fold": validation_fold,
+        "positive_buffer_m": positive_buffer_m,
+        "negative_buffer_m": negative_buffer_m,
+        "train_positive_count": fold_inputs["train_positive"].size().getInfo(),
+        "valid_positive_count": fold_inputs["valid_positive"].size().getInfo(),
+        "train_sample_count": train_count,
+        "valid_sample_count": valid_count,
+        "train_label_histogram": train_fc.aggregate_histogram("label").getInfo(),
+        "valid_label_histogram": valid_fc.aggregate_histogram("label").getInfo(),
+        "train_confusion": train_conf.getInfo(),
+        "valid_confusion": valid_conf.getInfo(),
+        "valid_accuracy": valid_conf.accuracy().getInfo(),
+        "valid_kappa": valid_conf.kappa().getInfo(),
         "classifier": classifier,
-        "train_confusion": train_conf_info,
-        "valid_confusion": valid_conf_info,
-        "valid_accuracy": valid_accuracy,
-        "valid_kappa": valid_kappa,
-        **outputs,
+        **fold_inputs,
     }
-    comparison_rows.append(
+
+    if include_importance:
+        importance, normalized_importance = classifier_importance(classifier, input_bands)
+        result.update(
+            {
+                "importance": importance,
+                "importance_normalized": normalized_importance,
+            }
+        )
+
+    if include_map_outputs:
+        probability = (
+            fold_inputs["feature_image"]
+            .select(input_bands)
+            .classify(classifier, "flood_prob")
+            .rename("flood_prob")
+            .clip(seoul)
+        )
+        threshold = ee.Number(
+            probability.reduceRegion(
+                reducer=ee.Reducer.percentile([HOTSPOT_PERCENTILE]),
+                geometry=seoul,
+                scale=ANALYSIS_SCALE,
+                maxPixels=1e9,
+            ).get("flood_prob")
+        )
+        hotspots = probability.gte(threshold).selfMask().rename("hotspots")
+        prob_stats = probability.reduceRegion(
+            reducer=ee.Reducer.minMax().combine(
+                reducer2=ee.Reducer.mean(),
+                sharedInputs=True,
+            ),
+            geometry=seoul,
+            scale=ANALYSIS_SCALE,
+            maxPixels=1e9,
+        ).getInfo()
+        hotspot_area = (
+            ee.Image.pixelArea()
+            .divide(1e6)
+            .updateMask(hotspots)
+            .reduceRegion(
+                reducer=ee.Reducer.sum(),
+                geometry=seoul,
+                scale=ANALYSIS_SCALE,
+                maxPixels=1e9,
+            )
+            .getInfo()
+        )
+        result.update(
+            {
+                "probability": probability,
+                "threshold": threshold.getInfo(),
+                "hotspots": hotspots,
+                "prob_stats": prob_stats,
+                "hotspot_area": hotspot_area,
+            }
+        )
+
+    return result
+
+
+def mean(values):
+    return sum(values) / max(len(values), 1)
+
+
+def sample_std(values):
+    if len(values) < 2:
+        return 0
+    avg = mean(values)
+    return (sum((value - avg) ** 2 for value in values) / (len(values) - 1)) ** 0.5
+
+
+def summarize_validation(rows):
+    accuracies = [row["valid_accuracy"] for row in rows]
+    kappas = [row["valid_kappa"] for row in rows]
+    return {
+        "accuracy_mean": mean(accuracies),
+        "accuracy_std": sample_std(accuracies),
+        "kappa_mean": mean(kappas),
+        "kappa_std": sample_std(kappas),
+    }
+
+
+def summarize_importance(rows, input_bands):
+    """fold별 정규화 변수 중요도의 평균과 표준편차를 요약한다."""
+    summary = []
+    rows_with_importance = [
+        row for row in rows if "importance_normalized" in row
+    ]
+    for band in input_bands:
+        values = [
+            row["importance_normalized"].get(band, 0)
+            for row in rows_with_importance
+        ]
+        summary.append(
+            {
+                "feature": band,
+                "importance_mean": mean(values),
+                "importance_std": sample_std(values),
+            }
+        )
+    return sorted(summary, key=lambda row: row["importance_mean"], reverse=True)
+
+
+def buffer_sensitivity_configs():
+    configs = []
+    seen = set()
+
+    def add_config(kind, positive_buffer_m, negative_buffer_m):
+        key = (positive_buffer_m, negative_buffer_m)
+        if key in seen:
+            return
+        seen.add(key)
+        configs.append(
+            {
+                "kind": kind,
+                "positive_buffer_m": positive_buffer_m,
+                "negative_buffer_m": negative_buffer_m,
+            }
+        )
+
+    for positive_buffer_m in POSITIVE_BUFFER_SWEEP_M:
+        add_config("positive_buffer", positive_buffer_m, NEGATIVE_BUFFER_M)
+    for negative_buffer_m in NEGATIVE_BUFFER_SWEEP_M:
+        add_config("negative_buffer", POSITIVE_BUFFER_M, negative_buffer_m)
+    return configs
+
+
+def run_buffer_sensitivity():
+    sensitivity_folds = [
+        fold for fold in BUFFER_SENSITIVITY_FOLDS if 0 <= fold < SPATIAL_FOLDS
+    ]
+    if not sensitivity_folds:
+        print("Buffer sensitivity skipped: no valid folds configured.")
+        return []
+
+    print("\nHybrid-basic buffer sensitivity:")
+    print(
+        "Sensitivity folds/config:",
         {
-            "model": model_name,
-            "valid_accuracy": valid_accuracy,
-            "valid_kappa": valid_kappa,
-            "p95_threshold": outputs["threshold"],
-            "hotspot_area_km2": outputs["hotspot_area_km2"],
-        }
+            "folds": sensitivity_folds,
+            "positive_sweep_m": POSITIVE_BUFFER_SWEEP_M,
+            "negative_sweep_m": NEGATIVE_BUFFER_SWEEP_M,
+        },
     )
 
-    print(f"\nModel: {model_name}")
-    print("  Bands:", input_bands)
-    print("  Train confusion matrix:", train_conf_info)
-    print("  Valid confusion matrix:", valid_conf_info)
-    print("  Valid accuracy:", valid_accuracy)
-    print("  Valid kappa:", valid_kappa)
-    print("  Probability stats:", outputs["stats"])
-    print(f"  P{HOTSPOT_PERCENTILE} threshold:", outputs["threshold"])
-    print("  Hotspot area (km²):", outputs["hotspot_area_km2"])
+    sensitivity_rows = []
+    for config in buffer_sensitivity_configs():
+        fold_rows = [
+            run_hybrid_fold(
+                fold,
+                positive_buffer_m=config["positive_buffer_m"],
+                negative_buffer_m=config["negative_buffer_m"],
+                include_map_outputs=False,
+            )
+            for fold in sensitivity_folds
+        ]
+        summary = summarize_validation(fold_rows)
+        row = {
+            **config,
+            "folds": sensitivity_folds,
+            **summary,
+        }
+        sensitivity_rows.append(row)
+        print(row)
+    return sensitivity_rows
 
-print("\nModel comparison summary:")
-for row in comparison_rows:
+
+def run_spatial_cv(model_name, input_bands, include_importance=False):
+    print(f"\n{model_name} spatial cross-validation:")
+    rows = []
+    for fold in range(SPATIAL_FOLDS):
+        result = run_hybrid_fold(
+            fold,
+            include_map_outputs=False,
+            include_importance=include_importance,
+            input_bands=input_bands,
+        )
+        rows.append(result)
+        print(
+            {
+                "fold": result["fold"],
+                "train_pos": result["train_positive_count"],
+                "valid_pos": result["valid_positive_count"],
+                "valid_accuracy": result["valid_accuracy"],
+                "valid_kappa": result["valid_kappa"],
+                "valid_confusion": result["valid_confusion"],
+            }
+        )
+    return rows
+
+
+cv_results = run_spatial_cv(
+    "Hybrid-basic",
+    hybrid_feature_bands,
+    include_importance=True,
+)
+
+cv_summary = summarize_validation(cv_results)
+print("Hybrid-basic CV summary:", cv_summary)
+importance_summary = summarize_importance(cv_results, hybrid_feature_bands)
+print("Hybrid-basic normalized feature importance summary:")
+for row in importance_summary:
     print(row)
 
-hybrid_result = model_results["hybrid_basic"]
+no_water_feature_bands = [
+    band for band in hybrid_feature_bands if band != "water_occ"
+]
+no_water_cv_results = run_spatial_cv(
+    "Hybrid-no-water-occ",
+    no_water_feature_bands,
+    include_importance=False,
+)
+no_water_cv_summary = summarize_validation(no_water_cv_results)
+print("Hybrid-no-water-occ CV summary:", no_water_cv_summary)
+print(
+    "Water occurrence ablation:",
+    {
+        "baseline_kappa_mean": cv_summary["kappa_mean"],
+        "no_water_kappa_mean": no_water_cv_summary["kappa_mean"],
+        "delta_kappa": no_water_cv_summary["kappa_mean"] - cv_summary["kappa_mean"],
+        "baseline_accuracy_mean": cv_summary["accuracy_mean"],
+        "no_water_accuracy_mean": no_water_cv_summary["accuracy_mean"],
+        "delta_accuracy": no_water_cv_summary["accuracy_mean"] - cv_summary["accuracy_mean"],
+    },
+)
 
-# 이후 지도 레이어의 기본 결과는 Hybrid-basic 모델을 사용한다.
+selected_model_name = "Hybrid-basic"
+selected_feature_bands = hybrid_feature_bands
+if no_water_cv_summary["kappa_mean"] >= cv_summary["kappa_mean"]:
+    selected_model_name = "Hybrid-no-water-occ"
+    selected_feature_bands = no_water_feature_bands
+    print("Selected feature set: water_occ removed from RF inputs.")
+else:
+    print("Selected feature set: keeping water_occ in RF inputs.")
+
+if RUN_BUFFER_SENSITIVITY:
+    buffer_sensitivity_rows = run_buffer_sensitivity()
+else:
+    buffer_sensitivity_rows = []
+
+hybrid_result = run_hybrid_fold(
+    VALIDATION_FOLD,
+    include_map_outputs=True,
+    input_bands=selected_feature_bands,
+)
 seoul_probability = hybrid_result["probability"]
-hotspots = hybrid_result["hotspot"]
+alpha_score = hybrid_result["alpha_score"]
+hotspots = hybrid_result["hotspots"]
 threshold = hybrid_result["threshold"]
-prob_stats = hybrid_result["stats"]
-hotspot_area = {"area": hybrid_result["hotspot_area_km2"]}
+prob_stats = hybrid_result["prob_stats"]
+hotspot_area = hybrid_result["hotspot_area"]
+valid_area_mask = hybrid_result["valid_area_mask"]
+valid_positive_points = hybrid_result["valid_positive"]
 
-print("\nSelected map model: Hybrid-basic")
+print(f"\nSelected map fold: {VALIDATION_FOLD}")
+print("Selected map model:", selected_model_name)
+print("Selected map bands:", selected_feature_bands)
+print("Selected fold validation accuracy:", hybrid_result["valid_accuracy"])
+print("Selected fold validation kappa:", hybrid_result["valid_kappa"])
 print("Seoul probability stats:", prob_stats)
 print(f"P{HOTSPOT_PERCENTILE} threshold:", threshold)
 print("Hotspot area (km²):", hotspot_area)
 
 # 결과 확인용 대화형 HTML 지도를 만든다.
-# 경계, 기준점, AlphaEarth 임베딩, 모델별 RF 확률, hotspot 레이어를 함께 저장한다.
+# 경계, 기준점, AlphaEarth 임베딩, Hybrid 확률, hotspot 레이어를 함께 저장한다.
 centroid = seoul.centroid().coordinates().getInfo()
 lon, lat = centroid[0], centroid[1]
 rgb_bands = valid_band_names[:3]
@@ -566,18 +796,16 @@ Map.addLayer(
     {"min": 0, "max": 1, "palette": ["#f7f7f7", "#fdb863", "#e66101", "#b2182b"]},
     "AlphaEarth flood similarity",
 )
-for spec in model_specs:
-    result = model_results[spec["key"]]
-    Map.addLayer(
-        result["probability"],
-        {"min": 0, "max": 1, "palette": spec["palette"]},
-        f"RF probability ({spec['name']})",
-    )
-    Map.addLayer(
-        result["hotspot"],
-        {"palette": [spec["palette"][-1]]},
-        f"Hotspots {spec['name']} (top {100 - HOTSPOT_PERCENTILE}%)",
-    )
+Map.addLayer(
+    seoul_probability,
+    {"min": 0, "max": 1, "palette": ["#f7fbff", "#6baed6", "#2171b5", "#08306b"]},
+    "Hybrid RF flood probability",
+)
+Map.addLayer(
+    hotspots,
+    {"palette": ["red"]},
+    f"Hybrid hotspots (top {100 - HOTSPOT_PERCENTILE}%)",
+)
 Map.addLayerControl()
 Map.to_html(OUTPUT_HTML)
 print(f"Saved: {OUTPUT_HTML}")
