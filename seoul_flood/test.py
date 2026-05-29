@@ -1,5 +1,7 @@
 import json
 import os
+import html
+import re
 
 import ee
 import geemap
@@ -62,6 +64,15 @@ def parse_int_list(raw_value):
     ]
 
 
+def parse_str_list(raw_value):
+    """쉼표로 구분된 문자열 환경변수 값을 리스트로 변환한다."""
+    return [
+        value.strip()
+        for value in raw_value.split(",")
+        if value.strip()
+    ]
+
+
 # 실행 환경에서 조정할 수 있는 주요 설정값들이다.
 # EE_PROJECT_ID만 필수이고, 나머지는 없으면 기본값을 사용한다.
 PROJECT_ID = os.environ.get("EE_PROJECT_ID")
@@ -71,6 +82,9 @@ if not PROJECT_ID:
 YEAR = int(os.environ.get("YEAR", "2024"))
 OUTPUT_HTML = resolve_output_path(os.environ.get("OUTPUT_HTML", "seoul_flood_risk_rf.html"))
 ANALYSIS_SCALE = int(os.environ.get("ANALYSIS_SCALE", "30"))
+BOUNDARY_BUFFER_M = int(os.environ.get("BOUNDARY_BUFFER_M", "0"))
+if BOUNDARY_BUFFER_M < 0:
+    raise ValueError("BOUNDARY_BUFFER_M는 0 이상의 정수여야 합니다.")
 SEOUL_REFERENCE_GEOJSON = resolve_input_path(
     os.environ.get("SEOUL_REFERENCE_GEOJSON", "source/seoul_flood_reference_points.geojson"),
     fallback_dir=os.path.join(SCRIPT_DIR, "source"),
@@ -86,6 +100,25 @@ HOTSPOT_PERCENTILE = int(os.environ.get("HOTSPOT_PERCENTILE", "95"))
 HOTSPOT_EVAL_PERCENTILES = parse_int_list(
     os.environ.get("HOTSPOT_EVAL_PERCENTILES", "80,90,95")
 )
+RISK_GRADE_PERCENTILES = parse_int_list(
+    os.environ.get("RISK_GRADE_PERCENTILES", "50,75,90,95")
+)
+if (
+    RISK_GRADE_PERCENTILES != sorted(RISK_GRADE_PERCENTILES)
+    or not all(0 < percentile < 100 for percentile in RISK_GRADE_PERCENTILES)
+):
+    raise ValueError("RISK_GRADE_PERCENTILES는 0과 100 사이의 오름차순 정수여야 합니다.")
+RISK_GRADE_PALETTE = parse_str_list(
+    os.environ.get("RISK_GRADE_PALETTE", "#2b83ba,#abdda4,#ffffbf,#fdae61,#d7191c")
+)
+RISK_GRADE_NAMES = parse_str_list(
+    os.environ.get("RISK_GRADE_NAMES", "Very low,Low,Moderate,High,Very high")
+)
+RISK_GRADE_COUNT = len(RISK_GRADE_PERCENTILES) + 1
+if len(RISK_GRADE_PALETTE) != RISK_GRADE_COUNT:
+    raise ValueError("RISK_GRADE_PALETTE 색상 수는 위험도 등급 수와 같아야 합니다.")
+if len(RISK_GRADE_NAMES) != RISK_GRADE_COUNT:
+    raise ValueError("RISK_GRADE_NAMES 이름 수는 위험도 등급 수와 같아야 합니다.")
 SPATIAL_BLOCK_DEGREES = float(os.environ.get("SPATIAL_BLOCK_DEGREES", "0.015"))
 SPATIAL_FOLDS = int(os.environ.get("SPATIAL_FOLDS", "5"))
 VALIDATION_FOLD = int(os.environ.get("VALIDATION_FOLD", "0"))
@@ -169,7 +202,22 @@ seoul_count = seoul_fc.size().getInfo()
 print("Matched Seoul features:", seoul_count)
 if seoul_count == 0:
     raise ValueError("서울 경계를 찾지 못했습니다.")
-seoul = seoul_fc.geometry()
+region_boundary = seoul_fc.geometry()
+analysis_region = (
+    region_boundary.buffer(BOUNDARY_BUFFER_M)
+    if BOUNDARY_BUFFER_M > 0
+    else region_boundary
+)
+# 기존 분석 코드는 seoul 변수를 분석 영역으로 사용한다. 향후 다른 지역으로
+# 확장할 때도 region_boundary와 analysis_region만 바꾸면 같은 흐름을 재사용할 수 있다.
+seoul = analysis_region
+print(
+    "Analysis boundary:",
+    {
+        "boundary_buffer_m": BOUNDARY_BUFFER_M,
+        "reference_points_filtered_to_analysis_boundary": True,
+    },
+)
 
 # 서울을 일정한 위경도 격자로 나누고, 일부 격자 fold 전체를 검증 영역으로 남긴다.
 lonlat = ee.Image.pixelLonLat()
@@ -202,6 +250,7 @@ print(
         "hotspot_eval": RUN_HOTSPOT_EVAL,
         "hotspot_eval_in_cv": HOTSPOT_EVAL_IN_CV,
         "hotspot_eval_percentiles": HOTSPOT_EVAL_PERCENTILES,
+        "risk_grade_percentiles": RISK_GRADE_PERCENTILES,
         "coverage_diagnostics": RUN_COVERAGE_DIAGNOSTICS,
         "buffer_sensitivity": RUN_BUFFER_SENSITIVITY,
     },
@@ -225,15 +274,27 @@ positive_features = [
     )
     for feature in reference_features
 ]
-positive_points = add_spatial_fold(ee.FeatureCollection(positive_features))
+all_positive_points = add_spatial_fold(ee.FeatureCollection(positive_features))
+positive_points = all_positive_points.filterBounds(analysis_region)
 positive_geom = positive_points.geometry()
 train_positive_points = positive_points.filter(ee.Filter.neq("fold", VALIDATION_FOLD))
 valid_positive_points = positive_points.filter(ee.Filter.eq("fold", VALIDATION_FOLD))
 train_positive_geom = train_positive_points.geometry()
+all_positive_count = all_positive_points.size().getInfo()
+analysis_positive_count = positive_points.size().getInfo()
+excluded_positive_count = all_positive_count - analysis_positive_count
 train_positive_count = train_positive_points.size().getInfo()
 valid_positive_count = valid_positive_points.size().getInfo()
 positive_fold_hist = positive_points.aggregate_histogram("fold").getInfo()
-print("Positive flood points:", len(positive_features))
+print("Positive flood points:", all_positive_count)
+print(
+    "Positive points inside analysis boundary:",
+    {
+        "included": analysis_positive_count,
+        "excluded": excluded_positive_count,
+        "boundary_buffer_m": BOUNDARY_BUFFER_M,
+    },
+)
 print("Positive points by spatial fold:", positive_fold_hist)
 print("Train / validation positive reference points:", train_positive_count, valid_positive_count)
 print("Sample points per class:", {"positive": POSITIVE_SAMPLE_POINTS, "negative": NEGATIVE_POINTS})
@@ -633,6 +694,288 @@ def compute_hotspot_metrics(probability, validation_points):
 
     metrics = ee.FeatureCollection(metric_features).getInfo()["features"]
     return [feature["properties"] for feature in metrics]
+
+
+def build_risk_grade(probability):
+    """확률 분위수를 기준으로 1~N 단계 위험도 등급 영상을 만든다."""
+    minmax_info = probability.reduceRegion(
+        reducer=ee.Reducer.minMax(),
+        geometry=seoul,
+        scale=ANALYSIS_SCALE,
+        maxPixels=1e9,
+    ).getInfo()
+    threshold_info = probability.reduceRegion(
+        reducer=ee.Reducer.percentile(RISK_GRADE_PERCENTILES),
+        geometry=seoul,
+        scale=ANALYSIS_SCALE,
+        maxPixels=1e9,
+    ).getInfo()
+    thresholds = {
+        percentile: threshold_info[f"flood_prob_p{percentile}"]
+        for percentile in RISK_GRADE_PERCENTILES
+    }
+
+    risk_grade = ee.Image.constant(1).rename("risk_grade").updateMask(probability.mask())
+    for index, percentile in enumerate(RISK_GRADE_PERCENTILES, start=2):
+        risk_grade = risk_grade.where(
+            probability.gte(ee.Number(thresholds[percentile])),
+            index,
+        )
+    risk_grade = risk_grade.rename("risk_grade")
+
+    area_info = (
+        ee.Image.pixelArea()
+        .divide(1e6)
+        .rename("area")
+        .addBands(risk_grade)
+        .reduceRegion(
+            reducer=ee.Reducer.sum().group(groupField=1, groupName="grade"),
+            geometry=seoul,
+            scale=ANALYSIS_SCALE,
+            maxPixels=1e9,
+        )
+        .getInfo()
+    )
+    raw_groups = area_info.get("groups", [])
+    area_by_grade = {
+        int(group["grade"]): group["sum"]
+        for group in raw_groups
+    }
+
+    grade_summaries = []
+    lower_percentile = 0
+    for grade in range(1, len(RISK_GRADE_PERCENTILES) + 2):
+        upper_percentile = (
+            RISK_GRADE_PERCENTILES[grade - 1]
+            if grade <= len(RISK_GRADE_PERCENTILES)
+            else 100
+        )
+        lower_threshold = (
+            thresholds.get(lower_percentile)
+            if lower_percentile in thresholds
+            else minmax_info["flood_prob_min"]
+        )
+        upper_threshold = (
+            thresholds.get(upper_percentile)
+            if upper_percentile in thresholds
+            else minmax_info["flood_prob_max"]
+        )
+        grade_summaries.append(
+            {
+                "grade": grade,
+                "percentile_range": f"p{lower_percentile}-p{upper_percentile}",
+                "probability_min": lower_threshold,
+                "probability_max": upper_threshold,
+                "area_km2": area_by_grade.get(grade, 0),
+            }
+        )
+        lower_percentile = upper_percentile
+
+    return risk_grade, thresholds, grade_summaries
+
+
+def histogram_count(histogram, grade):
+    for key, value in histogram.items():
+        if int(float(key)) == grade:
+            return int(value)
+    return 0
+
+
+def compute_risk_grade_point_metrics(risk_grade, validation_points, grade_summaries):
+    """위험도 등급별 검증 침수 기준점 포함률과 lift를 계산한다."""
+    scored_points = risk_grade.sampleRegions(
+        collection=validation_points,
+        scale=ANALYSIS_SCALE,
+        geometries=False,
+        tileScale=4,
+    ).filter(ee.Filter.notNull(["risk_grade"]))
+    histogram = scored_points.aggregate_histogram("risk_grade").getInfo()
+    valid_count = validation_points.size().getInfo()
+    evaluated_count = scored_points.size().getInfo()
+    excluded_count = valid_count - evaluated_count
+    total_area = sum(row["area_km2"] for row in grade_summaries)
+
+    grade_metrics = []
+    for row in grade_summaries:
+        grade = row["grade"]
+        hit_count = histogram_count(histogram, grade)
+        area_share = row["area_km2"] / total_area if total_area else 0
+        evaluated_point_share = hit_count / evaluated_count if evaluated_count else 0
+        all_point_share = hit_count / valid_count if valid_count else 0
+        lift = evaluated_point_share / area_share if area_share else None
+        grade_metrics.append(
+            {
+                **row,
+                "area_share": area_share,
+                "valid_positive_points": valid_count,
+                "evaluated_positive_points": evaluated_count,
+                "excluded_positive_points": excluded_count,
+                "hit_points": hit_count,
+                "evaluated_point_share": evaluated_point_share,
+                "all_point_share": all_point_share,
+                "lift": lift,
+            }
+        )
+
+    cumulative_metrics = []
+    for min_grade in range(len(grade_summaries), 0, -1):
+        included_rows = [
+            row for row in grade_metrics if row["grade"] >= min_grade
+        ]
+        area_km2 = sum(row["area_km2"] for row in included_rows)
+        hit_count = sum(row["hit_points"] for row in included_rows)
+        area_share = area_km2 / total_area if total_area else 0
+        evaluated_point_recall = hit_count / evaluated_count if evaluated_count else 0
+        all_point_recall = hit_count / valid_count if valid_count else 0
+        lift = evaluated_point_recall / area_share if area_share else None
+        cumulative_metrics.append(
+            {
+                "grade_range": f"{min_grade}+",
+                "min_grade": min_grade,
+                "area_km2": area_km2,
+                "area_share": area_share,
+                "valid_positive_points": valid_count,
+                "evaluated_positive_points": evaluated_count,
+                "excluded_positive_points": excluded_count,
+                "hit_points": hit_count,
+                "evaluated_point_recall": evaluated_point_recall,
+                "all_point_recall": all_point_recall,
+                "lift": lift,
+            }
+        )
+
+    return grade_metrics, cumulative_metrics
+
+
+def build_risk_grade_legend(grade_summaries):
+    """위험도 등급 지도에 사용할 HTML 범례 항목을 만든다."""
+    legend = {}
+    for row in grade_summaries:
+        grade = row["grade"]
+        label = f"Grade {grade}: {RISK_GRADE_NAMES[grade - 1]} ({row['percentile_range']})"
+        legend[label] = RISK_GRADE_PALETTE[grade - 1]
+    return legend
+
+
+def inject_static_legend(html_path, title, legend_dict):
+    """geemap widget 범례 대신 브라우저에서 바로 보이는 정적 HTML 범례를 삽입한다."""
+    items_html = "\n".join(
+        (
+            '<div class="risk-grade-legend-item">'
+            f'<span class="risk-grade-legend-swatch" style="background:{html.escape(color, quote=True)}"></span>'
+            f'<span>{html.escape(label)}</span>'
+            "</div>"
+        )
+        for label, color in legend_dict.items()
+    )
+    legend_html = f"""
+<style>
+.risk-grade-legend {{
+  position: fixed;
+  right: 18px;
+  bottom: 28px;
+  z-index: 999999;
+  max-width: 260px;
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.20);
+  color: #222;
+  font: 13px/1.35 Arial, sans-serif;
+}}
+.risk-grade-legend-title {{
+  margin-bottom: 8px;
+  font-weight: 700;
+}}
+.risk-grade-legend-item {{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}}
+.risk-grade-legend-swatch {{
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.28);
+  flex: 0 0 16px;
+}}
+</style>
+<div class="risk-grade-legend">
+  <div class="risk-grade-legend-title">{html.escape(title)}</div>
+  {items_html}
+</div>
+"""
+    with open(html_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    if "</body>" in content:
+        content = content.replace("</body>", f"{legend_html}\n</body>", 1)
+    else:
+        content = f"{content}\n{legend_html}"
+
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def sanitize_exported_widget_controls(html_path):
+    """정적 HTML에서 깨질 수 있는 빈 geemap widget control을 제거한다."""
+    with open(html_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    pattern = re.compile(
+        r'(<script type="application/vnd\.jupyter\.widget-state\+json">\s*)'
+        r"({.*?})"
+        r"(\s*</script>)",
+        re.DOTALL,
+    )
+    match = pattern.search(content)
+    if not match:
+        return
+
+    state = json.loads(match.group(2))
+    models = state.get("state", {})
+    remove_model_ids = set()
+    for model_id, model in models.items():
+        if model.get("model_name") == "LeafletWidgetControlModel":
+            remove_model_ids.add(model_id)
+            widget_ref = model.get("state", {}).get("widget")
+            if isinstance(widget_ref, str) and widget_ref.startswith("IPY_MODEL_"):
+                remove_model_ids.add(widget_ref.replace("IPY_MODEL_", "", 1))
+
+    for model_id in list(remove_model_ids):
+        model = models.get(model_id)
+        if not model:
+            continue
+        layout_ref = model.get("state", {}).get("layout")
+        if isinstance(layout_ref, str) and layout_ref.startswith("IPY_MODEL_"):
+            remove_model_ids.add(layout_ref.replace("IPY_MODEL_", "", 1))
+
+    if not remove_model_ids:
+        return
+
+    for model_id in remove_model_ids:
+        models.pop(model_id, None)
+
+    removed_refs = {f"IPY_MODEL_{model_id}" for model_id in remove_model_ids}
+    for model in models.values():
+        controls = model.get("state", {}).get("controls")
+        if isinstance(controls, list):
+            model["state"]["controls"] = [
+                control for control in controls if control not in removed_refs
+            ]
+
+    updated_state = json.dumps(state, ensure_ascii=False)
+    content = (
+        content[: match.start()]
+        + match.group(1)
+        + updated_state
+        + match.group(3)
+        + content[match.end():]
+    )
+
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(content)
 
 
 def diagnose_validation_coverage(feature_image, input_bands, probability, validation_points):
@@ -1234,6 +1577,15 @@ prob_stats = hybrid_result["prob_stats"]
 hotspot_area = hybrid_result["hotspot_area"]
 valid_area_mask = hybrid_result["valid_area_mask"]
 valid_positive_points = hybrid_result["valid_positive"]
+risk_grade, risk_grade_thresholds, risk_grade_summaries = build_risk_grade(seoul_probability)
+risk_grade_point_metrics, cumulative_risk_grade_point_metrics = (
+    compute_risk_grade_point_metrics(
+        risk_grade,
+        valid_positive_points,
+        risk_grade_summaries,
+    )
+)
+risk_grade_legend = build_risk_grade_legend(risk_grade_summaries)
 
 print(f"\nSelected map fold: {VALIDATION_FOLD}")
 print("Selected map model:", selected_model_name)
@@ -1243,6 +1595,17 @@ print("Selected fold validation kappa:", hybrid_result["valid_kappa"])
 print("Seoul probability stats:", prob_stats)
 print(f"P{HOTSPOT_PERCENTILE} threshold:", threshold)
 print("Hotspot area (km²):", hotspot_area)
+print("Risk grade percentile thresholds:", risk_grade_thresholds)
+print("Risk grade area summary:")
+for row in risk_grade_summaries:
+    print(row)
+print("Risk grade legend:", risk_grade_legend)
+print("Risk grade validation point summary:")
+for row in risk_grade_point_metrics:
+    print(row)
+print("Cumulative high-risk grade validation point summary:")
+for row in cumulative_risk_grade_point_metrics:
+    print(row)
 if "hotspot_metrics" in hybrid_result:
     print("Selected fold hotspot recall metrics:")
     for row in hybrid_result["hotspot_metrics"]:
@@ -1276,16 +1639,23 @@ centroid = seoul.centroid().coordinates().getInfo()
 lon, lat = centroid[0], centroid[1]
 rgb_bands = valid_band_names[:3]
 
-Map = geemap.Map(center=[lat, lon], zoom=11)
+Map = geemap.Map(center=[lat, lon], zoom=11, lite_mode=True)
 Map.addLayer(
     ee.Image().paint(seoul_fc, 1, 2),
     {"palette": ["cyan"]},
     "Seoul boundary",
 )
+if BOUNDARY_BUFFER_M > 0:
+    analysis_region_fc = ee.FeatureCollection([ee.Feature(analysis_region)])
+    Map.addLayer(
+        ee.Image().paint(analysis_region_fc, 1, 2),
+        {"palette": ["#ff7f00"]},
+        f"Analysis boundary (+{BOUNDARY_BUFFER_M}m)",
+    )
 Map.addLayer(
     positive_points,
     {"color": "#542788"},
-    "Official Seoul flood positives",
+    "Analysis flood positives",
 )
 Map.addLayer(
     valid_area_mask.selfMask(),
@@ -1313,10 +1683,21 @@ Map.addLayer(
     "Hybrid RF flood probability",
 )
 Map.addLayer(
+    risk_grade,
+    {
+        "min": 1,
+        "max": RISK_GRADE_COUNT,
+        "palette": RISK_GRADE_PALETTE,
+    },
+    "Hybrid RF risk grade",
+)
+Map.addLayer(
     hotspots,
     {"palette": ["red"]},
     f"Hybrid hotspots (top {100 - HOTSPOT_PERCENTILE}%)",
 )
 Map.addLayerControl()
 Map.to_html(OUTPUT_HTML)
+sanitize_exported_widget_controls(OUTPUT_HTML)
+inject_static_legend(OUTPUT_HTML, "Hybrid RF risk grade", risk_grade_legend)
 print(f"Saved: {OUTPUT_HTML}")
