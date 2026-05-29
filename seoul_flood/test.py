@@ -83,10 +83,40 @@ NEGATIVE_POINTS = int(os.environ.get("NEGATIVE_POINTS", "200"))
 NEGATIVE_BUFFER_M = int(os.environ.get("NEGATIVE_BUFFER_M", "300"))
 POSITIVE_BUFFER_M = int(os.environ.get("POSITIVE_BUFFER_M", "60"))
 HOTSPOT_PERCENTILE = int(os.environ.get("HOTSPOT_PERCENTILE", "95"))
+HOTSPOT_EVAL_PERCENTILES = parse_int_list(
+    os.environ.get("HOTSPOT_EVAL_PERCENTILES", "80,90,95")
+)
 SPATIAL_BLOCK_DEGREES = float(os.environ.get("SPATIAL_BLOCK_DEGREES", "0.015"))
 SPATIAL_FOLDS = int(os.environ.get("SPATIAL_FOLDS", "5"))
 VALIDATION_FOLD = int(os.environ.get("VALIDATION_FOLD", "0"))
-RUN_BUFFER_SENSITIVITY = os.environ.get("RUN_BUFFER_SENSITIVITY", "1") == "1"
+RUN_FULL_CV = os.environ.get("RUN_FULL_CV", "0") == "1"
+EVALUATION_FOLDS = parse_int_list(
+    os.environ.get(
+        "EVALUATION_FOLDS",
+        (
+            ",".join(str(fold) for fold in range(SPATIAL_FOLDS))
+            if RUN_FULL_CV
+            else str(VALIDATION_FOLD)
+        ),
+    )
+)
+EVALUATION_FOLDS = [
+    fold for fold in EVALUATION_FOLDS if 0 <= fold < SPATIAL_FOLDS
+]
+if not EVALUATION_FOLDS:
+    raise ValueError("EVALUATION_FOLDS에 유효한 fold가 없습니다.")
+RUN_FEATURE_ABLATIONS = os.environ.get(
+    "RUN_FEATURE_ABLATIONS",
+    "1" if RUN_FULL_CV else "0",
+) == "1"
+RUN_ALPHA_ABLATION = os.environ.get("RUN_ALPHA_ABLATION", "0") == "1"
+RUN_HOTSPOT_EVAL = os.environ.get("RUN_HOTSPOT_EVAL", "1") == "1"
+HOTSPOT_EVAL_IN_CV = os.environ.get(
+    "HOTSPOT_EVAL_IN_CV",
+    "1" if RUN_FULL_CV else "0",
+) == "1"
+RUN_COVERAGE_DIAGNOSTICS = os.environ.get("RUN_COVERAGE_DIAGNOSTICS", "0") == "1"
+RUN_BUFFER_SENSITIVITY = os.environ.get("RUN_BUFFER_SENSITIVITY", "0") == "1"
 POSITIVE_BUFFER_SWEEP_M = parse_int_list(
     os.environ.get("POSITIVE_BUFFER_SWEEP_M", "30,60,90")
 )
@@ -96,6 +126,7 @@ NEGATIVE_BUFFER_SWEEP_M = parse_int_list(
 BUFFER_SENSITIVITY_FOLDS = parse_int_list(
     os.environ.get("BUFFER_SENSITIVITY_FOLDS", str(VALIDATION_FOLD))
 )
+WATER_DISTANCE_PIXELS = int(os.environ.get("WATER_DISTANCE_PIXELS", "256"))
 
 # Google Earth Engine에 접속한다.
 ee.Initialize(project=PROJECT_ID)
@@ -159,6 +190,20 @@ print(
         "block_degrees": SPATIAL_BLOCK_DEGREES,
         "folds": SPATIAL_FOLDS,
         "validation_fold": VALIDATION_FOLD,
+    },
+)
+print(
+    "Model evaluation mode:",
+    {
+        "run_full_cv": RUN_FULL_CV,
+        "evaluation_folds": EVALUATION_FOLDS,
+        "feature_ablations": RUN_FEATURE_ABLATIONS,
+        "alpha_ablation": RUN_ALPHA_ABLATION,
+        "hotspot_eval": RUN_HOTSPOT_EVAL,
+        "hotspot_eval_in_cv": HOTSPOT_EVAL_IN_CV,
+        "hotspot_eval_percentiles": HOTSPOT_EVAL_PERCENTILES,
+        "coverage_diagnostics": RUN_COVERAGE_DIAGNOSTICS,
+        "buffer_sensitivity": RUN_BUFFER_SENSITIVITY,
     },
 )
 
@@ -230,6 +275,18 @@ dw = (
 built = dw.select("built").rename("built")
 dw_water = dw.select("water").rename("dw_water")
 
+# 기존 수역/최근 수역까지의 거리다. 물 자체 여부보다 주변 하천·수계 접근성을
+# 표현하기 위한 후보 feature로 사용한다.
+water_source = water_occ.gte(0.2).Or(dw_water.gte(0.25)).unmask(0).rename("water_source")
+water_dist_m = (
+    water_source.fastDistanceTransform(WATER_DISTANCE_PIXELS)
+    .sqrt()
+    .multiply(ANALYSIS_SCALE)
+    .rename("water_dist_m")
+    .clip(seoul)
+)
+print("Water distance candidate max pixels:", WATER_DISTANCE_PIXELS)
+
 # 서울 내부의 상대 고도값을 0~1로 정규화한다.
 # 값이 클수록 서울 안에서 상대적으로 낮은 저지대라는 뜻이다.
 dem_stats = dem.reduceRegion(
@@ -269,11 +326,15 @@ print("AlphaEarth bands:", band_names[:10], "...")
 # Hybrid-basic을 기준 모델로 고정한다.
 valid_band_names = band_names
 emb_valid = emb.select(valid_band_names).unmask(0)
-static_feature_image = ee.Image.cat([slope, hnd, log_upa, water_occ, built, lowland])
-static_feature_bands = static_feature_image.bandNames().getInfo()
+static_feature_image = ee.Image.cat(
+    [slope, hnd, log_upa, water_occ, built, lowland, water_dist_m]
+)
+base_static_feature_bands = ["slope", "hnd", "log_upa", "water_occ", "built", "lowland"]
+water_distance_feature_bands = ["water_dist_m"]
 alpha_feature_bands = ["alpha_score"]
-hybrid_feature_bands = static_feature_bands + alpha_feature_bands
+hybrid_feature_bands = base_static_feature_bands + alpha_feature_bands
 print("Fixed hybrid model bands:", hybrid_feature_bands)
+print("Candidate static feature bands:", static_feature_image.bandNames().getInfo())
 
 def make_negative_mask(negative_buffer_m):
     """침수점 주변과 기존 수역을 제외한 음성 후보 영역을 만든다."""
@@ -443,12 +504,237 @@ def classifier_importance(classifier, input_bands):
     return importance, normalized
 
 
+def compute_hotspot_metrics(probability, validation_points):
+    """위험도 상위 구간이 검증 침수 기준점을 얼마나 포함하는지 계산한다."""
+    scored_points = probability.sampleRegions(
+        collection=validation_points,
+        scale=ANALYSIS_SCALE,
+        geometries=False,
+        tileScale=4,
+    ).filter(ee.Filter.notNull(["flood_prob"]))
+    valid_count = validation_points.size()
+    sampled_count = scored_points.size()
+    excluded_count = valid_count.subtract(sampled_count)
+    analysis_area = (
+        ee.Image.pixelArea()
+        .divide(1e6)
+        .updateMask(probability.mask())
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=seoul,
+            scale=ANALYSIS_SCALE,
+            maxPixels=1e9,
+        )
+        .get("area")
+    )
+    analysis_area = ee.Number(analysis_area)
+
+    metric_features = []
+    for percentile in HOTSPOT_EVAL_PERCENTILES:
+        threshold = ee.Number(
+            probability.reduceRegion(
+                reducer=ee.Reducer.percentile([percentile]),
+                geometry=seoul,
+                scale=ANALYSIS_SCALE,
+                maxPixels=1e9,
+            ).get("flood_prob")
+        )
+        hotspots = probability.gte(threshold)
+        hit_count = scored_points.filter(ee.Filter.gte("flood_prob", threshold)).size()
+        evaluated_point_recall_value = ee.Number(
+            ee.Algorithms.If(
+                sampled_count.gt(0),
+                ee.Number(hit_count).divide(sampled_count),
+                0,
+            )
+        )
+        all_point_recall_value = ee.Number(
+            ee.Algorithms.If(
+                valid_count.gt(0),
+                ee.Number(hit_count).divide(valid_count),
+                0,
+            )
+        )
+        evaluated_point_recall = ee.Algorithms.If(
+            sampled_count.gt(0),
+            evaluated_point_recall_value,
+            None,
+        )
+        all_point_recall = ee.Algorithms.If(
+            valid_count.gt(0),
+            all_point_recall_value,
+            None,
+        )
+        sample_coverage = ee.Algorithms.If(
+            valid_count.gt(0),
+            ee.Number(sampled_count).divide(valid_count),
+            None,
+        )
+        hotspot_area = (
+            ee.Image.pixelArea()
+            .divide(1e6)
+            .updateMask(hotspots)
+            .reduceRegion(
+                reducer=ee.Reducer.sum(),
+                geometry=seoul,
+                scale=ANALYSIS_SCALE,
+                maxPixels=1e9,
+            )
+            .get("area")
+        )
+        hotspot_area = ee.Number(hotspot_area)
+        hotspot_area_share_value = ee.Number(
+            ee.Algorithms.If(
+                analysis_area.gt(0),
+                hotspot_area.divide(analysis_area),
+                0,
+            )
+        )
+        hotspot_area_share = ee.Algorithms.If(
+            analysis_area.gt(0),
+            hotspot_area_share_value,
+            None,
+        )
+        evaluated_point_lift = ee.Algorithms.If(
+            hotspot_area_share_value.gt(0),
+            evaluated_point_recall_value.divide(hotspot_area_share_value),
+            None,
+        )
+        all_point_lift = ee.Algorithms.If(
+            hotspot_area_share_value.gt(0),
+            all_point_recall_value.divide(hotspot_area_share_value),
+            None,
+        )
+        metric_features.append(
+            ee.Feature(
+                None,
+                {
+                    "percentile": percentile,
+                    "top_percent": 100 - percentile,
+                    "threshold": threshold,
+                    "valid_positive_points": valid_count,
+                    "sampled_positive_points": sampled_count,
+                    "evaluated_positive_points": sampled_count,
+                    "excluded_positive_points": excluded_count,
+                    "sample_coverage": sample_coverage,
+                    "hit_points": hit_count,
+                    "point_recall": evaluated_point_recall,
+                    "sampled_point_recall": evaluated_point_recall,
+                    "evaluated_point_recall": evaluated_point_recall,
+                    "all_point_recall": all_point_recall,
+                    "hotspot_area_share": hotspot_area_share,
+                    "evaluated_point_lift": evaluated_point_lift,
+                    "all_point_lift": all_point_lift,
+                    "analysis_area_km2": analysis_area,
+                    "hotspot_area_km2": hotspot_area,
+                },
+            )
+        )
+
+    metrics = ee.FeatureCollection(metric_features).getInfo()["features"]
+    return [feature["properties"] for feature in metrics]
+
+
+def diagnose_validation_coverage(feature_image, input_bands, probability, validation_points):
+    """검증 기준점에서 feature/probability mask가 생기는 원인을 요약한다."""
+    validity_bands = [
+        feature_image.select(band).mask().rename(f"{band}_valid")
+        for band in input_bands
+    ]
+    expected_count = validation_points.size().getInfo()
+    input_validity = ee.Image.cat(validity_bands).unmask(0, False)
+    all_inputs_valid = input_validity.reduce(ee.Reducer.min()).rename("all_inputs_valid")
+    probability_valid = probability.mask().rename("flood_prob_valid").unmask(0, False)
+    seoul_pixel = (
+        ee.Image.constant(1)
+        .clip(seoul)
+        .mask()
+        .rename("inside_seoul_pixel")
+        .unmask(0, False)
+    )
+    diagnostics_image = ee.Image.cat(
+        [
+            input_validity,
+            all_inputs_valid,
+            probability_valid,
+            seoul_pixel,
+            ee.Image.pixelLonLat(),
+        ]
+    )
+    diagnostics = diagnostics_image.sampleRegions(
+        collection=validation_points,
+        scale=ANALYSIS_SCALE,
+        geometries=True,
+        tileScale=4,
+    ).getInfo()["features"]
+
+    band_valid_counts = {
+        band: sum(
+            1
+            for feature in diagnostics
+            if feature["properties"].get(f"{band}_valid", 0) >= 1
+        )
+        for band in input_bands
+    }
+    full_input_count = sum(
+        1
+        for feature in diagnostics
+        if feature["properties"].get("all_inputs_valid", 0) >= 1
+    )
+    probability_count = sum(
+        1
+        for feature in diagnostics
+        if feature["properties"].get("flood_prob_valid", 0) >= 1
+    )
+    inside_seoul_pixel_count = sum(
+        1
+        for feature in diagnostics
+        if feature["properties"].get("inside_seoul_pixel", 0) >= 1
+    )
+
+    missing_points = []
+    for feature in diagnostics:
+        props = feature["properties"]
+        if (
+            props.get("all_inputs_valid", 0) >= 1
+            and props.get("flood_prob_valid", 0) >= 1
+        ):
+            continue
+
+        lon, lat = feature["geometry"]["coordinates"]
+        missing_bands = [
+            band
+            for band in input_bands
+            if props.get(f"{band}_valid", 0) < 1
+        ]
+        missing_points.append(
+            {
+                "lon": lon,
+                "lat": lat,
+                "inside_seoul_pixel": props.get("inside_seoul_pixel", 0),
+                "flood_prob_valid": props.get("flood_prob_valid", 0),
+                "missing_bands": missing_bands,
+            }
+        )
+
+    return {
+        "validation_points": expected_count,
+        "diagnostic_samples": len(diagnostics),
+        "inside_seoul_pixel_count": inside_seoul_pixel_count,
+        "all_input_bands_valid_count": full_input_count,
+        "probability_valid_count": probability_count,
+        "band_valid_counts": band_valid_counts,
+        "missing_points": missing_points,
+    }
+
+
 def run_hybrid_fold(
     validation_fold,
     positive_buffer_m=POSITIVE_BUFFER_M,
     negative_buffer_m=NEGATIVE_BUFFER_M,
     include_map_outputs=False,
     include_importance=False,
+    include_hotspot_metrics=False,
     input_bands=None,
 ):
     if input_bands is None:
@@ -505,7 +791,7 @@ def run_hybrid_fold(
             }
         )
 
-    if include_map_outputs:
+    if include_map_outputs or include_hotspot_metrics:
         probability = (
             fold_inputs["feature_image"]
             .select(input_bands)
@@ -513,6 +799,14 @@ def run_hybrid_fold(
             .rename("flood_prob")
             .clip(seoul)
         )
+
+        if include_hotspot_metrics:
+            result["hotspot_metrics"] = compute_hotspot_metrics(
+                probability,
+                fold_inputs["valid_positive"],
+            )
+
+    if include_map_outputs:
         threshold = ee.Number(
             probability.reduceRegion(
                 reducer=ee.Reducer.percentile([HOTSPOT_PERCENTILE]),
@@ -599,6 +893,107 @@ def summarize_importance(rows, input_bands):
     return sorted(summary, key=lambda row: row["importance_mean"], reverse=True)
 
 
+def compact_hotspot_recall(metrics):
+    return {
+        f"top_{int(metric['top_percent'])}_percent": metric["evaluated_point_recall"]
+        for metric in metrics
+    }
+
+
+def summarize_hotspot_metrics(rows):
+    """fold별 Top-k hotspot 포함률의 평균과 표준편차를 요약한다."""
+    grouped = {}
+    for row in rows:
+        for metric in row.get("hotspot_metrics", []):
+            percentile = int(metric["percentile"])
+            if percentile not in grouped:
+                grouped[percentile] = {
+                    "percentile": percentile,
+                    "top_percent": int(metric["top_percent"]),
+                    "point_recalls": [],
+                    "all_point_recalls": [],
+                    "point_lifts": [],
+                    "area_shares": [],
+                    "hotspot_areas": [],
+                    "hit_points": [],
+                }
+            grouped[percentile]["point_recalls"].append(metric["evaluated_point_recall"])
+            grouped[percentile]["all_point_recalls"].append(metric["all_point_recall"])
+            grouped[percentile]["point_lifts"].append(metric["evaluated_point_lift"])
+            grouped[percentile]["area_shares"].append(metric["hotspot_area_share"])
+            grouped[percentile]["hotspot_areas"].append(metric["hotspot_area_km2"])
+            grouped[percentile]["hit_points"].append(metric["hit_points"])
+
+    summary = []
+    for percentile in sorted(grouped):
+        values = grouped[percentile]
+        summary.append(
+            {
+                "percentile": values["percentile"],
+                "top_percent": values["top_percent"],
+                "evaluated_point_recall_mean": mean(values["point_recalls"]),
+                "evaluated_point_recall_std": sample_std(values["point_recalls"]),
+                "all_point_recall_mean": mean(values["all_point_recalls"]),
+                "evaluated_point_lift_mean": mean(values["point_lifts"]),
+                "hotspot_area_share_mean": mean(values["area_shares"]),
+                "hit_points_mean": mean(values["hit_points"]),
+                "hotspot_area_km2_mean": mean(values["hotspot_areas"]),
+            }
+        )
+    return summary
+
+
+def print_validation_delta(label, baseline_summary, comparison_summary):
+    print(
+        label,
+        {
+            "baseline_accuracy_mean": baseline_summary["accuracy_mean"],
+            "comparison_accuracy_mean": comparison_summary["accuracy_mean"],
+            "delta_accuracy": comparison_summary["accuracy_mean"] - baseline_summary["accuracy_mean"],
+            "baseline_kappa_mean": baseline_summary["kappa_mean"],
+            "comparison_kappa_mean": comparison_summary["kappa_mean"],
+            "delta_kappa": comparison_summary["kappa_mean"] - baseline_summary["kappa_mean"],
+        },
+    )
+
+
+def print_hotspot_delta(label, baseline_summary, comparison_summary):
+    baseline_by_percentile = {
+        row["percentile"]: row for row in baseline_summary
+    }
+    comparison_by_percentile = {
+        row["percentile"]: row for row in comparison_summary
+    }
+    common_percentiles = sorted(
+        set(baseline_by_percentile).intersection(comparison_by_percentile)
+    )
+    if not common_percentiles:
+        return
+
+    print(label)
+    for percentile in common_percentiles:
+        baseline = baseline_by_percentile[percentile]
+        comparison = comparison_by_percentile[percentile]
+        print(
+            {
+                "percentile": percentile,
+                "top_percent": baseline["top_percent"],
+                "baseline_recall": baseline["evaluated_point_recall_mean"],
+                "comparison_recall": comparison["evaluated_point_recall_mean"],
+                "delta_recall": (
+                    comparison["evaluated_point_recall_mean"]
+                    - baseline["evaluated_point_recall_mean"]
+                ),
+                "baseline_lift": baseline["evaluated_point_lift_mean"],
+                "comparison_lift": comparison["evaluated_point_lift_mean"],
+                "delta_lift": (
+                    comparison["evaluated_point_lift_mean"]
+                    - baseline["evaluated_point_lift_mean"]
+                ),
+            }
+        )
+
+
 def buffer_sensitivity_configs():
     configs = []
     seen = set()
@@ -663,27 +1058,43 @@ def run_buffer_sensitivity():
     return sensitivity_rows
 
 
-def run_spatial_cv(model_name, input_bands, include_importance=False):
-    print(f"\n{model_name} spatial cross-validation:")
+def run_spatial_cv(
+    model_name,
+    input_bands,
+    include_importance=False,
+    include_hotspot_metrics=False,
+    folds=None,
+):
+    folds = EVALUATION_FOLDS if folds is None else folds
+    label = (
+        "spatial cross-validation"
+        if len(folds) > 1
+        else "quick spatial validation"
+    )
+    print(f"\n{model_name} {label}:")
     rows = []
-    for fold in range(SPATIAL_FOLDS):
+    for fold in folds:
         result = run_hybrid_fold(
             fold,
             include_map_outputs=False,
             include_importance=include_importance,
+            include_hotspot_metrics=include_hotspot_metrics,
             input_bands=input_bands,
         )
         rows.append(result)
-        print(
-            {
-                "fold": result["fold"],
-                "train_pos": result["train_positive_count"],
-                "valid_pos": result["valid_positive_count"],
-                "valid_accuracy": result["valid_accuracy"],
-                "valid_kappa": result["valid_kappa"],
-                "valid_confusion": result["valid_confusion"],
-            }
-        )
+        fold_log = {
+            "fold": result["fold"],
+            "train_pos": result["train_positive_count"],
+            "valid_pos": result["valid_positive_count"],
+            "valid_accuracy": result["valid_accuracy"],
+            "valid_kappa": result["valid_kappa"],
+            "valid_confusion": result["valid_confusion"],
+        }
+        if "hotspot_metrics" in result:
+            fold_log["hotspot_point_recall"] = compact_hotspot_recall(
+                result["hotspot_metrics"]
+            )
+        print(fold_log)
     return rows
 
 
@@ -691,45 +1102,118 @@ cv_results = run_spatial_cv(
     "Hybrid-basic",
     hybrid_feature_bands,
     include_importance=True,
+    include_hotspot_metrics=HOTSPOT_EVAL_IN_CV,
 )
 
 cv_summary = summarize_validation(cv_results)
-print("Hybrid-basic CV summary:", cv_summary)
+print("Hybrid-basic validation summary:", cv_summary)
 importance_summary = summarize_importance(cv_results, hybrid_feature_bands)
 print("Hybrid-basic normalized feature importance summary:")
 for row in importance_summary:
     print(row)
+hotspot_cv_summary = summarize_hotspot_metrics(cv_results)
+if hotspot_cv_summary:
+    print("Hybrid-basic hotspot recall summary:")
+    for row in hotspot_cv_summary:
+        print(row)
 
-no_water_feature_bands = [
-    band for band in hybrid_feature_bands if band != "water_occ"
-]
-no_water_cv_results = run_spatial_cv(
-    "Hybrid-no-water-occ",
-    no_water_feature_bands,
-    include_importance=False,
-)
-no_water_cv_summary = summarize_validation(no_water_cv_results)
-print("Hybrid-no-water-occ CV summary:", no_water_cv_summary)
-print(
-    "Water occurrence ablation:",
-    {
-        "baseline_kappa_mean": cv_summary["kappa_mean"],
-        "no_water_kappa_mean": no_water_cv_summary["kappa_mean"],
-        "delta_kappa": no_water_cv_summary["kappa_mean"] - cv_summary["kappa_mean"],
-        "baseline_accuracy_mean": cv_summary["accuracy_mean"],
-        "no_water_accuracy_mean": no_water_cv_summary["accuracy_mean"],
-        "delta_accuracy": no_water_cv_summary["accuracy_mean"] - cv_summary["accuracy_mean"],
-    },
-)
+no_alpha_cv_results = []
+no_alpha_cv_summary = None
+no_alpha_hotspot_summary = []
+if RUN_ALPHA_ABLATION:
+    no_alpha_cv_results = run_spatial_cv(
+        "Hybrid-no-alpha",
+        base_static_feature_bands,
+        include_importance=False,
+        include_hotspot_metrics=HOTSPOT_EVAL_IN_CV,
+    )
+    no_alpha_cv_summary = summarize_validation(no_alpha_cv_results)
+    print("Hybrid-no-alpha validation summary:", no_alpha_cv_summary)
+    print_validation_delta(
+        "AlphaEarth ablation validation delta:",
+        cv_summary,
+        no_alpha_cv_summary,
+    )
+    no_alpha_hotspot_summary = summarize_hotspot_metrics(no_alpha_cv_results)
+    if no_alpha_hotspot_summary:
+        print("Hybrid-no-alpha hotspot recall summary:")
+        for row in no_alpha_hotspot_summary:
+            print(row)
+        print_hotspot_delta(
+            "AlphaEarth ablation hotspot recall/lift delta:",
+            hotspot_cv_summary,
+            no_alpha_hotspot_summary,
+        )
 
 selected_model_name = "Hybrid-basic"
 selected_feature_bands = hybrid_feature_bands
-if no_water_cv_summary["kappa_mean"] >= cv_summary["kappa_mean"]:
-    selected_model_name = "Hybrid-no-water-occ"
-    selected_feature_bands = no_water_feature_bands
-    print("Selected feature set: water_occ removed from RF inputs.")
+selected_kappa_mean = cv_summary["kappa_mean"]
+no_water_cv_results = []
+no_water_cv_summary = None
+water_dist_cv_results = []
+water_dist_cv_summary = None
+
+if RUN_FEATURE_ABLATIONS:
+    no_water_feature_bands = [
+        band for band in hybrid_feature_bands if band != "water_occ"
+    ]
+    no_water_cv_results = run_spatial_cv(
+        "Hybrid-no-water-occ",
+        no_water_feature_bands,
+        include_importance=False,
+    )
+    no_water_cv_summary = summarize_validation(no_water_cv_results)
+    print("Hybrid-no-water-occ validation summary:", no_water_cv_summary)
+    print(
+        "Water occurrence ablation:",
+        {
+            "baseline_kappa_mean": cv_summary["kappa_mean"],
+            "no_water_kappa_mean": no_water_cv_summary["kappa_mean"],
+            "delta_kappa": no_water_cv_summary["kappa_mean"] - cv_summary["kappa_mean"],
+            "baseline_accuracy_mean": cv_summary["accuracy_mean"],
+            "no_water_accuracy_mean": no_water_cv_summary["accuracy_mean"],
+            "delta_accuracy": no_water_cv_summary["accuracy_mean"] - cv_summary["accuracy_mean"],
+        },
+    )
+
+    if no_water_cv_summary["kappa_mean"] >= selected_kappa_mean:
+        selected_model_name = "Hybrid-no-water-occ"
+        selected_feature_bands = no_water_feature_bands
+        selected_kappa_mean = no_water_cv_summary["kappa_mean"]
+        print("Selected feature set: water_occ removed from RF inputs.")
+    else:
+        print("Selected feature set: keeping water_occ in RF inputs.")
+
+    water_dist_feature_bands = hybrid_feature_bands + water_distance_feature_bands
+    water_dist_cv_results = run_spatial_cv(
+        "Hybrid-plus-water-distance",
+        water_dist_feature_bands,
+        include_importance=False,
+    )
+    water_dist_cv_summary = summarize_validation(water_dist_cv_results)
+    print("Hybrid-plus-water-distance validation summary:", water_dist_cv_summary)
+    print(
+        "Water distance ablation:",
+        {
+            "baseline_kappa_mean": cv_summary["kappa_mean"],
+            "water_dist_kappa_mean": water_dist_cv_summary["kappa_mean"],
+            "delta_kappa": water_dist_cv_summary["kappa_mean"] - cv_summary["kappa_mean"],
+            "baseline_accuracy_mean": cv_summary["accuracy_mean"],
+            "water_dist_accuracy_mean": water_dist_cv_summary["accuracy_mean"],
+            "delta_accuracy": water_dist_cv_summary["accuracy_mean"] - cv_summary["accuracy_mean"],
+        },
+    )
+
+    if water_dist_cv_summary["kappa_mean"] > selected_kappa_mean:
+        selected_model_name = "Hybrid-plus-water-distance"
+        selected_feature_bands = water_dist_feature_bands
+        selected_kappa_mean = water_dist_cv_summary["kappa_mean"]
+        print("Selected feature set: water_dist_m added to RF inputs.")
+    else:
+        print("Selected feature set: water_dist_m not added to RF inputs.")
 else:
-    print("Selected feature set: keeping water_occ in RF inputs.")
+    print("\nFeature ablations skipped for fast model-building run.")
+    print("Set RUN_FEATURE_ABLATIONS=1 to retest candidate feature sets.")
 
 if RUN_BUFFER_SENSITIVITY:
     buffer_sensitivity_rows = run_buffer_sensitivity()
@@ -739,6 +1223,7 @@ else:
 hybrid_result = run_hybrid_fold(
     VALIDATION_FOLD,
     include_map_outputs=True,
+    include_hotspot_metrics=RUN_HOTSPOT_EVAL,
     input_bands=selected_feature_bands,
 )
 seoul_probability = hybrid_result["probability"]
@@ -758,6 +1243,32 @@ print("Selected fold validation kappa:", hybrid_result["valid_kappa"])
 print("Seoul probability stats:", prob_stats)
 print(f"P{HOTSPOT_PERCENTILE} threshold:", threshold)
 print("Hotspot area (km²):", hotspot_area)
+if "hotspot_metrics" in hybrid_result:
+    print("Selected fold hotspot recall metrics:")
+    for row in hybrid_result["hotspot_metrics"]:
+        print(row)
+if RUN_COVERAGE_DIAGNOSTICS:
+    coverage_diagnostics = diagnose_validation_coverage(
+        hybrid_result["feature_image"],
+        selected_feature_bands,
+        seoul_probability,
+        valid_positive_points,
+    )
+    print("Selected fold validation coverage diagnostics:")
+    print(
+        {
+            "validation_points": coverage_diagnostics["validation_points"],
+            "diagnostic_samples": coverage_diagnostics["diagnostic_samples"],
+            "inside_seoul_pixel_count": coverage_diagnostics["inside_seoul_pixel_count"],
+            "all_input_bands_valid_count": coverage_diagnostics["all_input_bands_valid_count"],
+            "probability_valid_count": coverage_diagnostics["probability_valid_count"],
+            "band_valid_counts": coverage_diagnostics["band_valid_counts"],
+        }
+    )
+    if coverage_diagnostics["missing_points"]:
+        print("Validation points without full prediction coverage:")
+        for row in coverage_diagnostics["missing_points"]:
+            print(row)
 
 # 결과 확인용 대화형 HTML 지도를 만든다.
 # 경계, 기준점, AlphaEarth 임베딩, Hybrid 확률, hotspot 레이어를 함께 저장한다.
