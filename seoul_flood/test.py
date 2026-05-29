@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 import html
@@ -73,6 +74,52 @@ def parse_str_list(raw_value):
     ]
 
 
+def json_safe(value):
+    """JSON 저장 가능한 기본 타입만 남기도록 값들을 정리한다."""
+    if isinstance(value, dict):
+        return {str(key): json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def write_json(path, payload):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(json_safe(payload), f, ensure_ascii=False, indent=2)
+
+
+def write_csv(path, rows):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if not rows:
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write("")
+        return
+
+    fieldnames = []
+    for row in rows:
+        for key in row.keys():
+            if key not in fieldnames:
+                fieldnames.append(key)
+
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    key: json.dumps(value, ensure_ascii=False)
+                    if isinstance(value, (dict, list))
+                    else value
+                    for key, value in row.items()
+                }
+            )
+
+
 # 실행 환경에서 조정할 수 있는 주요 설정값들이다.
 # EE_PROJECT_ID만 필수이고, 나머지는 없으면 기본값을 사용한다.
 PROJECT_ID = os.environ.get("EE_PROJECT_ID")
@@ -81,6 +128,18 @@ if not PROJECT_ID:
 
 YEAR = int(os.environ.get("YEAR", "2024"))
 OUTPUT_HTML = resolve_output_path(os.environ.get("OUTPUT_HTML", "seoul_flood_risk_rf.html"))
+OUTPUT_DIR = resolve_output_path(os.environ.get("OUTPUT_DIR", "outputs"))
+METRICS_JSON = os.path.join(OUTPUT_DIR, "metrics.json")
+CV_RESULTS_CSV = os.path.join(OUTPUT_DIR, "cv_results.csv")
+FEATURE_IMPORTANCE_CSV = os.path.join(OUTPUT_DIR, "feature_importance.csv")
+TOPK_SUMMARY_CSV = os.path.join(OUTPUT_DIR, "topk_summary.csv")
+SELECTED_FOLD_TOPK_CSV = os.path.join(OUTPUT_DIR, "selected_fold_topk.csv")
+RISK_GRADE_SUMMARY_CSV = os.path.join(OUTPUT_DIR, "risk_grade_summary.csv")
+RISK_GRADE_POINTS_CSV = os.path.join(OUTPUT_DIR, "risk_grade_points.csv")
+CUMULATIVE_RISK_GRADE_POINTS_CSV = os.path.join(
+    OUTPUT_DIR,
+    "cumulative_risk_grade_points.csv",
+)
 ANALYSIS_SCALE = int(os.environ.get("ANALYSIS_SCALE", "30"))
 BOUNDARY_BUFFER_M = int(os.environ.get("BOUNDARY_BUFFER_M", "0"))
 if BOUNDARY_BUFFER_M < 0:
@@ -1215,6 +1274,30 @@ def summarize_validation(rows):
     }
 
 
+def sanitize_fold_result(row):
+    """EE 객체를 제외하고 fold 평가 결과의 표/JSON 저장용 값만 남긴다."""
+    result = {
+        "fold": row["fold"],
+        "positive_buffer_m": row["positive_buffer_m"],
+        "negative_buffer_m": row["negative_buffer_m"],
+        "train_positive_count": row["train_positive_count"],
+        "valid_positive_count": row["valid_positive_count"],
+        "train_sample_count": row["train_sample_count"],
+        "valid_sample_count": row["valid_sample_count"],
+        "train_label_histogram": row["train_label_histogram"],
+        "valid_label_histogram": row["valid_label_histogram"],
+        "train_confusion": row["train_confusion"],
+        "valid_confusion": row["valid_confusion"],
+        "valid_accuracy": row["valid_accuracy"],
+        "valid_kappa": row["valid_kappa"],
+    }
+    if "hotspot_metrics" in row:
+        result["hotspot_point_recall"] = compact_hotspot_recall(
+            row["hotspot_metrics"]
+        )
+    return result
+
+
 def summarize_importance(rows, input_bands):
     """fold별 정규화 변수 중요도의 평균과 표준편차를 요약한다."""
     summary = []
@@ -1335,6 +1418,19 @@ def print_hotspot_delta(label, baseline_summary, comparison_summary):
                 ),
             }
         )
+
+
+def save_experiment_outputs(metrics_payload, csv_tables):
+    write_json(METRICS_JSON, metrics_payload)
+    for path, rows in csv_tables.items():
+        write_csv(path, rows)
+    print(
+        "Saved metrics outputs:",
+        {
+            "metrics_json": METRICS_JSON,
+            **{os.path.basename(path): path for path in csv_tables},
+        },
+    )
 
 
 def buffer_sensitivity_configs():
@@ -1632,6 +1728,134 @@ if RUN_COVERAGE_DIAGNOSTICS:
         print("Validation points without full prediction coverage:")
         for row in coverage_diagnostics["missing_points"]:
             print(row)
+
+cv_result_rows = [
+    {"model": "Hybrid-basic", **sanitize_fold_result(row)}
+    for row in cv_results
+]
+if no_alpha_cv_results:
+    cv_result_rows.extend(
+        {"model": "Hybrid-no-alpha", **sanitize_fold_result(row)}
+        for row in no_alpha_cv_results
+    )
+if no_water_cv_results:
+    cv_result_rows.extend(
+        {"model": "Hybrid-no-water-occ", **sanitize_fold_result(row)}
+        for row in no_water_cv_results
+    )
+if water_dist_cv_results:
+    cv_result_rows.extend(
+        {"model": "Hybrid-plus-water-distance", **sanitize_fold_result(row)}
+        for row in water_dist_cv_results
+    )
+
+topk_summary_rows = [
+    {"model": "Hybrid-basic", **row}
+    for row in hotspot_cv_summary
+]
+if no_alpha_hotspot_summary:
+    topk_summary_rows.extend(
+        {"model": "Hybrid-no-alpha", **row}
+        for row in no_alpha_hotspot_summary
+    )
+
+metrics_payload = {
+    "config": {
+        "year": YEAR,
+        "analysis_scale": ANALYSIS_SCALE,
+        "boundary_buffer_m": BOUNDARY_BUFFER_M,
+        "reference_point_limit": REFERENCE_POINT_LIMIT,
+        "positive_sample_points": POSITIVE_SAMPLE_POINTS,
+        "negative_points": NEGATIVE_POINTS,
+        "positive_buffer_m": POSITIVE_BUFFER_M,
+        "negative_buffer_m": NEGATIVE_BUFFER_M,
+        "hotspot_percentile": HOTSPOT_PERCENTILE,
+        "hotspot_eval_percentiles": HOTSPOT_EVAL_PERCENTILES,
+        "risk_grade_percentiles": RISK_GRADE_PERCENTILES,
+        "spatial_block_degrees": SPATIAL_BLOCK_DEGREES,
+        "spatial_folds": SPATIAL_FOLDS,
+        "validation_fold": VALIDATION_FOLD,
+        "evaluation_folds": EVALUATION_FOLDS,
+        "run_full_cv": RUN_FULL_CV,
+        "run_feature_ablations": RUN_FEATURE_ABLATIONS,
+        "run_alpha_ablation": RUN_ALPHA_ABLATION,
+        "run_hotspot_eval": RUN_HOTSPOT_EVAL,
+        "hotspot_eval_in_cv": HOTSPOT_EVAL_IN_CV,
+        "run_buffer_sensitivity": RUN_BUFFER_SENSITIVITY,
+        "water_distance_pixels": WATER_DISTANCE_PIXELS,
+        "risk_grade_palette": RISK_GRADE_PALETTE,
+        "risk_grade_names": RISK_GRADE_NAMES,
+    },
+    "data": {
+        "reference_geojson": SEOUL_REFERENCE_GEOJSON,
+        "reference_points_total": all_positive_count,
+        "reference_points_in_analysis_boundary": analysis_positive_count,
+        "reference_points_excluded": excluded_positive_count,
+        "positive_fold_histogram": positive_fold_hist,
+        "selected_train_positive_count": train_positive_count,
+        "selected_validation_positive_count": valid_positive_count,
+    },
+    "selected_model": {
+        "name": selected_model_name,
+        "bands": selected_feature_bands,
+        "validation_fold": VALIDATION_FOLD,
+        "selected_fold_accuracy": hybrid_result["valid_accuracy"],
+        "selected_fold_kappa": hybrid_result["valid_kappa"],
+        "probability_stats": prob_stats,
+        "hotspot_threshold": threshold,
+        "hotspot_area": hotspot_area,
+    },
+    "validation": {
+        "summary": cv_summary,
+        "fold_results": cv_result_rows,
+    },
+    "feature_importance": importance_summary,
+    "topk": {
+        "cv_summary": topk_summary_rows,
+        "selected_fold": hybrid_result.get("hotspot_metrics", []),
+    },
+    "risk_grade": {
+        "thresholds": risk_grade_thresholds,
+        "area_summary": risk_grade_summaries,
+        "point_summary": risk_grade_point_metrics,
+        "cumulative_point_summary": cumulative_risk_grade_point_metrics,
+        "legend": risk_grade_legend,
+    },
+    "alpha_ablation": {
+        "validation_summary": no_alpha_cv_summary,
+        "hotspot_summary": no_alpha_hotspot_summary,
+    } if no_alpha_cv_summary else None,
+    "feature_ablations": {
+        "no_water_occ": no_water_cv_summary,
+        "water_distance": water_dist_cv_summary,
+    } if RUN_FEATURE_ABLATIONS else None,
+    "buffer_sensitivity": buffer_sensitivity_rows,
+    "outputs": {
+        "html": OUTPUT_HTML,
+        "output_dir": OUTPUT_DIR,
+        "metrics_json": METRICS_JSON,
+        "cv_results_csv": CV_RESULTS_CSV,
+        "feature_importance_csv": FEATURE_IMPORTANCE_CSV,
+        "topk_summary_csv": TOPK_SUMMARY_CSV,
+        "selected_fold_topk_csv": SELECTED_FOLD_TOPK_CSV,
+        "risk_grade_summary_csv": RISK_GRADE_SUMMARY_CSV,
+        "risk_grade_points_csv": RISK_GRADE_POINTS_CSV,
+        "cumulative_risk_grade_points_csv": CUMULATIVE_RISK_GRADE_POINTS_CSV,
+    },
+}
+
+save_experiment_outputs(
+    metrics_payload,
+    {
+        CV_RESULTS_CSV: cv_result_rows,
+        FEATURE_IMPORTANCE_CSV: importance_summary,
+        TOPK_SUMMARY_CSV: topk_summary_rows,
+        SELECTED_FOLD_TOPK_CSV: hybrid_result.get("hotspot_metrics", []),
+        RISK_GRADE_SUMMARY_CSV: risk_grade_summaries,
+        RISK_GRADE_POINTS_CSV: risk_grade_point_metrics,
+        CUMULATIVE_RISK_GRADE_POINTS_CSV: cumulative_risk_grade_point_metrics,
+    },
+)
 
 # 결과 확인용 대화형 HTML 지도를 만든다.
 # 경계, 기준점, AlphaEarth 임베딩, Hybrid 확률, hotspot 레이어를 함께 저장한다.

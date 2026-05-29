@@ -1,0 +1,453 @@
+{
+  "config": {
+    "year": 2024,
+    "analysis_scale": 30,
+    "boundary_buffer_m": 0,
+    "reference_point_limit": 0,
+    "positive_sample_points": 200,
+    "negative_points": 200,
+    "positive_buffer_m": 60,
+    "negative_buffer_m": 300,
+    "hotspot_percentile": 95,
+    "hotspot_eval_percentiles": [
+      80,
+      90,
+      95
+    ],
+    "risk_grade_percentiles": [
+      50,
+      75,
+      90,
+      95
+    ],
+    "spatial_block_degrees": 0.015,
+    "spatial_folds": 5,
+    "validation_fold": 0,
+    "evaluation_folds": [
+      0
+    ],
+    "run_full_cv": false,
+    "run_feature_ablations": false,
+    "run_alpha_ablation": false,
+    "run_hotspot_eval": true,
+    "hotspot_eval_in_cv": false,
+    "run_buffer_sensitivity": false,
+    "water_distance_pixels": 256,
+    "risk_grade_palette": [
+      "#2b83ba",
+      "#abdda4",
+      "#ffffbf",
+      "#fdae61",
+      "#d7191c"
+    ],
+    "risk_grade_names": [
+      "Very low",
+      "Low",
+      "Moderate",
+      "High",
+      "Very high"
+    ]
+  },
+  "data": {
+    "reference_geojson": "/Users/cho/alpha_earth/seoul_flood/source/seoul_flood_reference_points.geojson",
+    "reference_points_total": 300,
+    "reference_points_in_analysis_boundary": 257,
+    "reference_points_excluded": 43,
+    "positive_fold_histogram": {
+      "0": 31,
+      "1": 66,
+      "2": 50,
+      "3": 60,
+      "4": 50
+    },
+    "selected_train_positive_count": 226,
+    "selected_validation_positive_count": 31
+  },
+  "selected_model": {
+    "name": "Hybrid-basic",
+    "bands": [
+      "slope",
+      "hnd",
+      "log_upa",
+      "water_occ",
+      "built",
+      "lowland",
+      "alpha_score"
+    ],
+    "validation_fold": 0,
+    "selected_fold_accuracy": 0.8175,
+    "selected_fold_kappa": 0.635,
+    "probability_stats": {
+      "flood_prob_max": 0.9605255396221807,
+      "flood_prob_mean": 0.32815238645603756,
+      "flood_prob_min": 0.0270851245345634
+    },
+    "hotspot_threshold": 0.8495524322518186,
+    "hotspot_area": {
+      "area": 27.636559691342683
+    }
+  },
+  "validation": {
+    "summary": {
+      "accuracy_mean": 0.8175,
+      "accuracy_std": 0,
+      "kappa_mean": 0.635,
+      "kappa_std": 0
+    },
+    "fold_results": [
+      {
+        "model": "Hybrid-basic",
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            191,
+            9
+          ],
+          [
+            4,
+            196
+          ]
+        ],
+        "valid_confusion": [
+          [
+            162,
+            38
+          ],
+          [
+            35,
+            165
+          ]
+        ],
+        "valid_accuracy": 0.8175,
+        "valid_kappa": 0.635
+      }
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "log_upa",
+      "importance_mean": 0.2024341071964909,
+      "importance_std": 0
+    },
+    {
+      "feature": "built",
+      "importance_mean": 0.19645642328962845,
+      "importance_std": 0
+    },
+    {
+      "feature": "slope",
+      "importance_mean": 0.16356681196946876,
+      "importance_std": 0
+    },
+    {
+      "feature": "alpha_score",
+      "importance_mean": 0.15446042369365295,
+      "importance_std": 0
+    },
+    {
+      "feature": "lowland",
+      "importance_mean": 0.1488260435497421,
+      "importance_std": 0
+    },
+    {
+      "feature": "hnd",
+      "importance_mean": 0.13425619030101688,
+      "importance_std": 0
+    },
+    {
+      "feature": "water_occ",
+      "importance_mean": 0.0,
+      "importance_std": 0
+    }
+  ],
+  "topk": {
+    "cv_summary": [],
+    "selected_fold": [
+      {
+        "all_point_lift": 3.5108971728084266,
+        "all_point_recall": 0.7096774193548387,
+        "analysis_area_km2": 539.3494505769586,
+        "evaluated_point_lift": 3.5108971728084266,
+        "evaluated_point_recall": 0.7096774193548387,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 22,
+        "hotspot_area_km2": 109.02174212915685,
+        "hotspot_area_share": 0.20213563212594907,
+        "percentile": 80,
+        "point_recall": 0.7096774193548387,
+        "sample_coverage": 1,
+        "sampled_point_recall": 0.7096774193548387,
+        "sampled_positive_points": 31,
+        "threshold": 0.5840048263403015,
+        "top_percent": 20,
+        "valid_positive_points": 31
+      },
+      {
+        "all_point_lift": 2.5812347497202417,
+        "all_point_recall": 0.25806451612903225,
+        "analysis_area_km2": 539.3494505769586,
+        "evaluated_point_lift": 2.5812347497202417,
+        "evaluated_point_recall": 0.25806451612903225,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 8,
+        "hotspot_area_km2": 53.922625597182716,
+        "hotspot_area_share": 0.09997715866679763,
+        "percentile": 90,
+        "point_recall": 0.25806451612903225,
+        "sample_coverage": 1,
+        "sampled_point_recall": 0.25806451612903225,
+        "sampled_positive_points": 31,
+        "threshold": 0.7559018981165163,
+        "top_percent": 10,
+        "valid_positive_points": 31
+      },
+      {
+        "all_point_lift": 3.14770897097232,
+        "all_point_recall": 0.16129032258064516,
+        "analysis_area_km2": 539.3494505769586,
+        "evaluated_point_lift": 3.14770897097232,
+        "evaluated_point_recall": 0.16129032258064516,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 5,
+        "hotspot_area_km2": 27.636559691342683,
+        "hotspot_area_share": 0.05124054481149283,
+        "percentile": 95,
+        "point_recall": 0.16129032258064516,
+        "sample_coverage": 1,
+        "sampled_point_recall": 0.16129032258064516,
+        "sampled_positive_points": 31,
+        "threshold": 0.8495524322518186,
+        "top_percent": 5,
+        "valid_positive_points": 31
+      }
+    ]
+  },
+  "risk_grade": {
+    "thresholds": {
+      "50": 0.2597598764046195,
+      "75": 0.5175963252815946,
+      "90": 0.7559018981165163,
+      "95": 0.8495524322518186
+    },
+    "area_summary": [
+      {
+        "grade": 1,
+        "percentile_range": "p0-p50",
+        "probability_min": 0.0270851245345634,
+        "probability_max": 0.2597598764046195,
+        "area_km2": 274.2840163072097
+      },
+      {
+        "grade": 2,
+        "percentile_range": "p50-p75",
+        "probability_min": 0.2597598764046195,
+        "probability_max": 0.5175963252815946,
+        "area_km2": 136.87526880214634
+      },
+      {
+        "grade": 3,
+        "percentile_range": "p75-p90",
+        "probability_min": 0.5175963252815946,
+        "probability_max": 0.7559018981165163,
+        "area_km2": 81.60329062225134
+      },
+      {
+        "grade": 4,
+        "percentile_range": "p90-p95",
+        "probability_min": 0.7559018981165163,
+        "probability_max": 0.8495524322518186,
+        "area_km2": 26.28606590583918
+      },
+      {
+        "grade": 5,
+        "percentile_range": "p95-p100",
+        "probability_min": 0.8495524322518186,
+        "probability_max": 0.9605255396221807,
+        "area_km2": 27.636559691342683
+      }
+    ],
+    "point_summary": [
+      {
+        "grade": 1,
+        "percentile_range": "p0-p50",
+        "probability_min": 0.0270851245345634,
+        "probability_max": 0.2597598764046195,
+        "area_km2": 274.2840163072097,
+        "area_share": 0.5017220433999802,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 0,
+        "evaluated_point_share": 0.0,
+        "all_point_share": 0.0,
+        "lift": 0.0
+      },
+      {
+        "grade": 2,
+        "percentile_range": "p50-p75",
+        "probability_min": 0.2597598764046195,
+        "probability_max": 0.5175963252815946,
+        "area_km2": 136.87526880214634,
+        "area_share": 0.25037310040486416,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 5,
+        "evaluated_point_share": 0.16129032258064516,
+        "all_point_share": 0.16129032258064516,
+        "lift": 0.6441998853704001
+      },
+      {
+        "grade": 3,
+        "percentile_range": "p75-p90",
+        "probability_min": 0.5175963252815946,
+        "probability_max": 0.7559018981165163,
+        "area_km2": 81.60329062225134,
+        "area_share": 0.14926925115935818,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 11,
+        "evaluated_point_share": 0.3548387096774194,
+        "all_point_share": 0.3548387096774194,
+        "lift": 2.377172169897185
+      },
+      {
+        "grade": 4,
+        "percentile_range": "p90-p95",
+        "probability_min": 0.7559018981165163,
+        "probability_max": 0.8495524322518186,
+        "area_km2": 26.28606590583918,
+        "area_share": 0.0480826366653926,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 10,
+        "evaluated_point_share": 0.3225806451612903,
+        "all_point_share": 0.3225806451612903,
+        "lift": 6.708880118329018
+      },
+      {
+        "grade": 5,
+        "percentile_range": "p95-p100",
+        "probability_min": 0.8495524322518186,
+        "probability_max": 0.9605255396221807,
+        "area_km2": 27.636559691342683,
+        "area_share": 0.050552968370404835,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 5,
+        "evaluated_point_share": 0.16129032258064516,
+        "all_point_share": 0.16129032258064516,
+        "lift": 3.1905213042854506
+      }
+    ],
+    "cumulative_point_summary": [
+      {
+        "grade_range": "5+",
+        "min_grade": 5,
+        "area_km2": 27.636559691342683,
+        "area_share": 0.050552968370404835,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 5,
+        "evaluated_point_recall": 0.16129032258064516,
+        "all_point_recall": 0.16129032258064516,
+        "lift": 3.1905213042854506
+      },
+      {
+        "grade_range": "4+",
+        "min_grade": 4,
+        "area_km2": 53.92262559718186,
+        "area_share": 0.09863560503579744,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 15,
+        "evaluated_point_recall": 0.4838709677419355,
+        "all_point_recall": 0.4838709677419355,
+        "lift": 4.905642009965125
+      },
+      {
+        "grade_range": "3+",
+        "min_grade": 3,
+        "area_km2": 135.5259162194332,
+        "area_share": 0.24790485619515565,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 26,
+        "evaluated_point_recall": 0.8387096774193549,
+        "all_point_recall": 0.8387096774193549,
+        "lift": 3.3831918030645833
+      },
+      {
+        "grade_range": "2+",
+        "min_grade": 2,
+        "area_km2": 272.4011850215795,
+        "area_share": 0.4982779566000197,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 31,
+        "evaluated_point_recall": 1.0,
+        "all_point_recall": 1.0,
+        "lift": 2.0069119790557486
+      },
+      {
+        "grade_range": "1+",
+        "min_grade": 1,
+        "area_km2": 546.6852013287893,
+        "area_share": 1.0,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 31,
+        "evaluated_point_recall": 1.0,
+        "all_point_recall": 1.0,
+        "lift": 1.0
+      }
+    ],
+    "legend": {
+      "Grade 1: Very low (p0-p50)": "#2b83ba",
+      "Grade 2: Low (p50-p75)": "#abdda4",
+      "Grade 3: Moderate (p75-p90)": "#ffffbf",
+      "Grade 4: High (p90-p95)": "#fdae61",
+      "Grade 5: Very high (p95-p100)": "#d7191c"
+    }
+  },
+  "alpha_ablation": null,
+  "feature_ablations": null,
+  "buffer_sensitivity": [],
+  "outputs": {
+    "html": "/Users/cho/alpha_earth/seoul_flood/seoul_flood_risk_rf.html",
+    "output_dir": "/Users/cho/alpha_earth/seoul_flood/outputs",
+    "metrics_json": "/Users/cho/alpha_earth/seoul_flood/outputs/metrics.json",
+    "cv_results_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/cv_results.csv",
+    "feature_importance_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/feature_importance.csv",
+    "topk_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/topk_summary.csv",
+    "selected_fold_topk_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_fold_topk.csv",
+    "risk_grade_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/risk_grade_summary.csv",
+    "risk_grade_points_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/risk_grade_points.csv",
+    "cumulative_risk_grade_points_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/cumulative_risk_grade_points.csv"
+  }
+}

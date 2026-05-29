@@ -1,0 +1,2 @@
+model,fold,positive_buffer_m,negative_buffer_m,train_positive_count,valid_positive_count,train_sample_count,valid_sample_count,train_label_histogram,valid_label_histogram,train_confusion,valid_confusion,valid_accuracy,valid_kappa
+Hybrid-basic,0,60,300,226,31,400,400,"{""0"": 200, ""1"": 200}","{""0"": 200, ""1"": 200}","[[191, 9], [4, 196]]","[[162, 38], [35, 165]]",0.8175,0.635
