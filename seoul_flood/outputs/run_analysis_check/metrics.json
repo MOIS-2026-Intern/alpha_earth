@@ -1,0 +1,449 @@
+{
+  "config": {
+    "year": 2024,
+    "analysis_scale": 30,
+    "spatial_block_degrees": 0.015,
+    "spatial_folds": 5,
+    "positive_sample_points": 200,
+    "negative_points": 200,
+    "positive_buffer_m": 60,
+    "negative_buffer_m": 300,
+    "reference_geojson": "/Users/cho/alpha_earth/seoul_flood/source/seoul_flood_reference_points.geojson",
+    "pump_station_csv": "/Users/cho/alpha_earth/seoul_flood/source/seoul_pump_stations.csv",
+    "sewer_sensor_gu_stats_csv": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_sensor_gu_stats.csv",
+    "sewer_level_sensor_csv": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_202605.csv"
+  },
+  "data": {
+    "reference_points_total": 300,
+    "reference_points_in_analysis_boundary": 257,
+    "positive_fold_histogram": {
+      "0": 31,
+      "1": 66,
+      "2": 50,
+      "3": 60,
+      "4": 50
+    },
+    "drainage_infra": [
+      {
+        "dataset": "pump_station_gu_stats",
+        "path": "/Users/cho/alpha_earth/seoul_flood/source/seoul_pump_stations.csv",
+        "exists": true,
+        "used": true,
+        "encoding": "cp949",
+        "raw_records": 96,
+        "unique_stations": 57,
+        "district_count": 16,
+        "skipped_rows": 5,
+        "max_by_metric": {
+          "pump_station_count": 13.0,
+          "pump_capacity_sum": 13408.6,
+          "pump_catchment_area_sum": 57.0,
+          "pump_reservoir_capacity_sum": 1998600.0
+        },
+        "image_summary": {
+          "dataset": "pump_station_gu_stats",
+          "band_names": [
+            "pump_capacity_sum_norm",
+            "pump_catchment_area_sum_norm",
+            "pump_reservoir_capacity_sum_norm",
+            "pump_station_count_norm"
+          ],
+          "district_count": 16,
+          "used": true,
+          "matched_adm2_count": 16
+        }
+      },
+      {
+        "dataset": "sewer_level_sensor_gu_stats",
+        "summary_path": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_sensor_gu_stats.csv",
+        "raw_path": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_202605.csv",
+        "summary_exists": true,
+        "raw_exists": true,
+        "used": true,
+        "encoding": "utf-8-sig",
+        "source": "summary_csv",
+        "district_count": 25,
+        "max_by_metric": {
+          "sewer_sensor_count": 116.0
+        },
+        "image_summary": {
+          "dataset": "sewer_level_sensor_gu_stats",
+          "band_names": [
+            "sewer_sensor_count_norm"
+          ],
+          "district_count": 25,
+          "used": true,
+          "matched_adm2_count": 25
+        }
+      }
+    ],
+    "alphaearth_tiles": 2
+  },
+  "model": {
+    "name": "Hybrid-plus-drainage-gu-stats",
+    "bands": [
+      "slope",
+      "hnd",
+      "log_upa",
+      "water_occ",
+      "built",
+      "lowland",
+      "alpha_score",
+      "pump_capacity_sum_norm",
+      "pump_catchment_area_sum_norm",
+      "pump_reservoir_capacity_sum_norm",
+      "pump_station_count_norm",
+      "sewer_sensor_count_norm"
+    ]
+  },
+  "validation": {
+    "summary": {
+      "accuracy_mean": 0.833,
+      "accuracy_std": 0.034928498393145976,
+      "kappa_mean": 0.666,
+      "kappa_std": 0.06985699678629195,
+      "roc_auc_mean": 0.90886,
+      "roc_auc_std": 0.039924391823796146,
+      "pr_auc_mean": 0.8991271753277728,
+      "pr_auc_std": 0.03903904312095829,
+      "average_precision_mean": 0.8991271753277728,
+      "average_precision_std": 0.03903904312095829,
+      "precision_mean": 0.8415403816431141,
+      "precision_std": 0.033808520801112824,
+      "recall_mean": 0.8220000000000001,
+      "recall_std": 0.07285259089421597,
+      "specificity_mean": 0.844,
+      "specificity_std": 0.042190046219457975,
+      "f1_mean": 0.8301290596240982,
+      "f1_std": 0.04023682561645424,
+      "balanced_accuracy_mean": 0.833,
+      "balanced_accuracy_std": 0.034928498393145976,
+      "negative_predictive_value_mean": 0.8298230306918318,
+      "negative_predictive_value_std": 0.05958367455443595,
+      "false_positive_rate_mean": 0.156,
+      "false_positive_rate_std": 0.042190046219457975,
+      "false_negative_rate_mean": 0.178,
+      "false_negative_rate_std": 0.07285259089421599
+    },
+    "fold_results": [
+      {
+        "fold": 0,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_confusion": [
+          [
+            157,
+            43
+          ],
+          [
+            16,
+            184
+          ]
+        ],
+        "valid_accuracy": 0.8525,
+        "valid_kappa": 0.7050000000000001,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 184,
+          "true_negative": 157,
+          "false_positive": 43,
+          "false_negative": 16,
+          "accuracy": 0.8525,
+          "precision": 0.8105726872246696,
+          "recall": 0.92,
+          "sensitivity": 0.92,
+          "specificity": 0.785,
+          "f1": 0.8618266978922717,
+          "balanced_accuracy": 0.8525,
+          "negative_predictive_value": 0.9075144508670521,
+          "false_positive_rate": 0.21499999999999997,
+          "false_negative_rate": 0.07999999999999996,
+          "roc_auc": 0.92765,
+          "pr_auc": 0.9173428958065527,
+          "average_precision": 0.9173428958065527
+        }
+      },
+      {
+        "fold": 1,
+        "train_positive_count": 191,
+        "valid_positive_count": 66,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_confusion": [
+          [
+            169,
+            31
+          ],
+          [
+            49,
+            151
+          ]
+        ],
+        "valid_accuracy": 0.8,
+        "valid_kappa": 0.6000000000000001,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 151,
+          "true_negative": 169,
+          "false_positive": 31,
+          "false_negative": 49,
+          "accuracy": 0.8,
+          "precision": 0.8296703296703297,
+          "recall": 0.755,
+          "sensitivity": 0.755,
+          "specificity": 0.845,
+          "f1": 0.7905759162303665,
+          "balanced_accuracy": 0.8,
+          "negative_predictive_value": 0.7752293577981652,
+          "false_positive_rate": 0.15500000000000003,
+          "false_negative_rate": 0.245,
+          "roc_auc": 0.866625,
+          "pr_auc": 0.8680325141023916,
+          "average_precision": 0.8680325141023916
+        }
+      },
+      {
+        "fold": 2,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_confusion": [
+          [
+            179,
+            21
+          ],
+          [
+            40,
+            160
+          ]
+        ],
+        "valid_accuracy": 0.8475,
+        "valid_kappa": 0.6950000000000001,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 160,
+          "true_negative": 179,
+          "false_positive": 21,
+          "false_negative": 40,
+          "accuracy": 0.8475,
+          "precision": 0.8839779005524862,
+          "recall": 0.8,
+          "sensitivity": 0.8,
+          "specificity": 0.895,
+          "f1": 0.8398950131233596,
+          "balanced_accuracy": 0.8475,
+          "negative_predictive_value": 0.817351598173516,
+          "false_positive_rate": 0.10499999999999998,
+          "false_negative_rate": 0.19999999999999996,
+          "roc_auc": 0.936375,
+          "pr_auc": 0.92609394118379,
+          "average_precision": 0.92609394118379
+        }
+      },
+      {
+        "fold": 3,
+        "train_positive_count": 197,
+        "valid_positive_count": 60,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_confusion": [
+          [
+            165,
+            35
+          ],
+          [
+            48,
+            152
+          ]
+        ],
+        "valid_accuracy": 0.7925,
+        "valid_kappa": 0.585,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 152,
+          "true_negative": 165,
+          "false_positive": 35,
+          "false_negative": 48,
+          "accuracy": 0.7925,
+          "precision": 0.8128342245989305,
+          "recall": 0.76,
+          "sensitivity": 0.76,
+          "specificity": 0.825,
+          "f1": 0.785529715762274,
+          "balanced_accuracy": 0.7925,
+          "negative_predictive_value": 0.7746478873239436,
+          "false_positive_rate": 0.17500000000000004,
+          "false_negative_rate": 0.24,
+          "roc_auc": 0.86515,
+          "pr_auc": 0.847523991835201,
+          "average_precision": 0.847523991835201
+        }
+      },
+      {
+        "fold": 4,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_confusion": [
+          [
+            174,
+            26
+          ],
+          [
+            25,
+            175
+          ]
+        ],
+        "valid_accuracy": 0.8725,
+        "valid_kappa": 0.7450000000000001,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 175,
+          "true_negative": 174,
+          "false_positive": 26,
+          "false_negative": 25,
+          "accuracy": 0.8725,
+          "precision": 0.8706467661691543,
+          "recall": 0.875,
+          "sensitivity": 0.875,
+          "specificity": 0.87,
+          "f1": 0.8728179551122195,
+          "balanced_accuracy": 0.8725,
+          "negative_predictive_value": 0.8743718592964824,
+          "false_positive_rate": 0.13,
+          "false_negative_rate": 0.125,
+          "roc_auc": 0.9485,
+          "pr_auc": 0.9366425337109284,
+          "average_precision": 0.9366425337109284
+        }
+      }
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "alpha_score",
+      "importance_mean": 0.13697376556571858,
+      "importance_std": 0.012709299634276085
+    },
+    {
+      "feature": "log_upa",
+      "importance_mean": 0.12237252718018202,
+      "importance_std": 0.013657307065312499
+    },
+    {
+      "feature": "hnd",
+      "importance_mean": 0.12181292716156344,
+      "importance_std": 0.017022237501948482
+    },
+    {
+      "feature": "lowland",
+      "importance_mean": 0.1110342209977209,
+      "importance_std": 0.004756958187531734
+    },
+    {
+      "feature": "built",
+      "importance_mean": 0.10598156698883912,
+      "importance_std": 0.017653038562406007
+    },
+    {
+      "feature": "slope",
+      "importance_mean": 0.10434988512484174,
+      "importance_std": 0.0037876540340673163
+    },
+    {
+      "feature": "sewer_sensor_count_norm",
+      "importance_mean": 0.10078051053000822,
+      "importance_std": 0.009213356576978323
+    },
+    {
+      "feature": "pump_capacity_sum_norm",
+      "importance_mean": 0.064976273793634,
+      "importance_std": 0.007379245664086899
+    },
+    {
+      "feature": "pump_reservoir_capacity_sum_norm",
+      "importance_mean": 0.04955714806527374,
+      "importance_std": 0.005392300902289723
+    },
+    {
+      "feature": "pump_catchment_area_sum_norm",
+      "importance_mean": 0.04876034934131273,
+      "importance_std": 0.004271478376748936
+    },
+    {
+      "feature": "pump_station_count_norm",
+      "importance_mean": 0.03340082525090547,
+      "importance_std": 0.0043161144967805735
+    },
+    {
+      "feature": "water_occ",
+      "importance_mean": 0.0,
+      "importance_std": 0.0
+    }
+  ],
+  "outputs": {
+    "output_dir": "/Users/cho/alpha_earth/seoul_flood/outputs/run_analysis_check",
+    "metrics_json": "/Users/cho/alpha_earth/seoul_flood/outputs/run_analysis_check/metrics.json",
+    "cv_results_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/run_analysis_check/cv_results.csv",
+    "feature_importance_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/run_analysis_check/feature_importance.csv"
+  }
+}

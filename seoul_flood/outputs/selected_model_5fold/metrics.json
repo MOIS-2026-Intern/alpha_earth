@@ -1,0 +1,1017 @@
+{
+  "config": {
+    "year": 2024,
+    "analysis_scale": 30,
+    "boundary_buffer_m": 0,
+    "reference_point_limit": 0,
+    "positive_sample_points": 200,
+    "negative_points": 200,
+    "positive_buffer_m": 60,
+    "negative_buffer_m": 300,
+    "hotspot_percentile": 95,
+    "hotspot_eval_percentiles": [
+      80,
+      90,
+      95
+    ],
+    "risk_grade_percentiles": [
+      50,
+      75,
+      90,
+      95
+    ],
+    "spatial_block_degrees": 0.015,
+    "spatial_folds": 5,
+    "validation_fold": 0,
+    "evaluation_folds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "run_full_cv": true,
+    "run_feature_ablations": true,
+    "run_water_feature_ablations": false,
+    "run_drainage_ablation": true,
+    "run_alpha_ablation": false,
+    "run_hotspot_eval": false,
+    "hotspot_eval_in_cv": true,
+    "generate_map_outputs": false,
+    "run_buffer_sensitivity": false,
+    "water_distance_pixels": 256,
+    "drainage_feature_mode": "gu_stats",
+    "drainage_infra_enabled": false,
+    "drainage_infra_radius_m": 500,
+    "drainage_infra_min_active_points": 500,
+    "drainage_gu_stats_enabled": true,
+    "drainage_gu_stats_min_districts": 5,
+    "lid_preconsult_zip": "/Users/cho/alpha_earth/seoul_flood/source/SP_BNLC_AS.zip",
+    "rainwater_use_zip": "/Users/cho/alpha_earth/seoul_flood/source/SP_LGRC_AS.zip",
+    "pump_station_csv": "/Users/cho/alpha_earth/seoul_flood/source/seoul_pump_stations.csv",
+    "sewer_sensor_gu_stats_csv": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_sensor_gu_stats.csv",
+    "sewer_level_sensor_csv": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_202605.csv",
+    "risk_grade_palette": [
+      "#2b83ba",
+      "#abdda4",
+      "#ffffbf",
+      "#fdae61",
+      "#d7191c"
+    ],
+    "risk_grade_names": [
+      "Very low",
+      "Low",
+      "Moderate",
+      "High",
+      "Very high"
+    ]
+  },
+  "data": {
+    "reference_geojson": "/Users/cho/alpha_earth/seoul_flood/source/seoul_flood_reference_points.geojson",
+    "reference_points_total": 300,
+    "reference_points_in_analysis_boundary": 257,
+    "reference_points_excluded": 43,
+    "positive_fold_histogram": {
+      "0": 31,
+      "1": 66,
+      "2": 50,
+      "3": 60,
+      "4": 50
+    },
+    "selected_train_positive_count": 226,
+    "selected_validation_positive_count": 31,
+    "drainage_infra": [
+      {
+        "dataset": "drainage_infra",
+        "used": false,
+        "reason": "disabled"
+      },
+      {
+        "dataset": "pump_station_gu_stats",
+        "path": "/Users/cho/alpha_earth/seoul_flood/source/seoul_pump_stations.csv",
+        "exists": true,
+        "raw_records": 96,
+        "unique_stations": 57,
+        "district_count": 16,
+        "used": true,
+        "reason": null,
+        "encoding": "cp949",
+        "skipped_rows": 5,
+        "raw_stats_by_gu": {
+          "금천구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 23.5,
+            "pump_catchment_area_sum": 0.8,
+            "pump_reservoir_capacity_sum": 7647.0
+          },
+          "영등포구": {
+            "pump_station_count": 4.0,
+            "pump_capacity_sum": 115.70000000000002,
+            "pump_catchment_area_sum": 5.0,
+            "pump_reservoir_capacity_sum": 38050.0
+          },
+          "관악구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 16.7,
+            "pump_catchment_area_sum": 1.0,
+            "pump_reservoir_capacity_sum": 8400.0
+          },
+          "구로구": {
+            "pump_station_count": 6.0,
+            "pump_capacity_sum": 332.5,
+            "pump_catchment_area_sum": 57.0,
+            "pump_reservoir_capacity_sum": 192844.0
+          },
+          "강동구": {
+            "pump_station_count": 3.0,
+            "pump_capacity_sum": 240.2,
+            "pump_catchment_area_sum": 21.6,
+            "pump_reservoir_capacity_sum": 367000.0
+          },
+          "송파구": {
+            "pump_station_count": 6.0,
+            "pump_capacity_sum": 243.7,
+            "pump_catchment_area_sum": 32.9,
+            "pump_reservoir_capacity_sum": 1998600.0
+          },
+          "강남구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 52.0,
+            "pump_catchment_area_sum": 5.8,
+            "pump_reservoir_capacity_sum": 216000.0
+          },
+          "서초구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 11.7,
+            "pump_catchment_area_sum": 0.6,
+            "pump_reservoir_capacity_sum": 3520.0
+          },
+          "마포구": {
+            "pump_station_count": 3.0,
+            "pump_capacity_sum": 34.8,
+            "pump_catchment_area_sum": 1.5,
+            "pump_reservoir_capacity_sum": 8350.0
+          },
+          "은평구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 5.8,
+            "pump_catchment_area_sum": 0.2,
+            "pump_reservoir_capacity_sum": 1500.0
+          },
+          "성동구": {
+            "pump_station_count": 9.0,
+            "pump_capacity_sum": 13408.6,
+            "pump_catchment_area_sum": 17.6,
+            "pump_reservoir_capacity_sum": 324803.0
+          },
+          "동대문구": {
+            "pump_station_count": 13.0,
+            "pump_capacity_sum": 7231.0,
+            "pump_catchment_area_sum": 10.6,
+            "pump_reservoir_capacity_sum": 123832.0
+          },
+          "중랑구": {
+            "pump_station_count": 4.0,
+            "pump_capacity_sum": 6087.7,
+            "pump_catchment_area_sum": 7.7,
+            "pump_reservoir_capacity_sum": 121360.0
+          },
+          "성북구": {
+            "pump_station_count": 2.0,
+            "pump_capacity_sum": 13.7,
+            "pump_catchment_area_sum": 0.6,
+            "pump_reservoir_capacity_sum": 4400.0
+          },
+          "노원구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 9.9,
+            "pump_catchment_area_sum": 0.7,
+            "pump_reservoir_capacity_sum": 4500.0
+          },
+          "광진구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 2330.0,
+            "pump_catchment_area_sum": 2.0,
+            "pump_reservoir_capacity_sum": 7175.0
+          }
+        },
+        "max_by_metric": {
+          "pump_station_count": 13.0,
+          "pump_capacity_sum": 13408.6,
+          "pump_catchment_area_sum": 57.0,
+          "pump_reservoir_capacity_sum": 1998600.0
+        },
+        "image_summary": {
+          "dataset": "pump_station_gu_stats",
+          "used": true,
+          "district_count": 16,
+          "band_names": [
+            "pump_capacity_sum_norm",
+            "pump_catchment_area_sum_norm",
+            "pump_reservoir_capacity_sum_norm",
+            "pump_station_count_norm"
+          ],
+          "matched_adm2_count": 16,
+          "reason": null,
+          "mapped_districts": [
+            "강남구",
+            "강동구",
+            "관악구",
+            "광진구",
+            "구로구",
+            "금천구",
+            "노원구",
+            "동대문구",
+            "마포구",
+            "서초구",
+            "성동구",
+            "성북구",
+            "송파구",
+            "영등포구",
+            "은평구",
+            "중랑구"
+          ],
+          "unmapped_districts": []
+        }
+      },
+      {
+        "dataset": "sewer_level_sensor_gu_stats",
+        "summary_path": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_sensor_gu_stats.csv",
+        "raw_path": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_202605.csv",
+        "summary_exists": true,
+        "raw_exists": true,
+        "district_count": 25,
+        "used": true,
+        "reason": null,
+        "encoding": "utf-8-sig",
+        "source": "summary_csv",
+        "raw_stats_by_gu": {
+          "강남구": {
+            "sewer_sensor_count": 116.0
+          },
+          "강동구": {
+            "sewer_sensor_count": 24.0
+          },
+          "강북구": {
+            "sewer_sensor_count": 3.0
+          },
+          "강서구": {
+            "sewer_sensor_count": 20.0
+          },
+          "관악구": {
+            "sewer_sensor_count": 41.0
+          },
+          "광진구": {
+            "sewer_sensor_count": 36.0
+          },
+          "구로구": {
+            "sewer_sensor_count": 35.0
+          },
+          "금천구": {
+            "sewer_sensor_count": 20.0
+          },
+          "노원구": {
+            "sewer_sensor_count": 11.0
+          },
+          "도봉구": {
+            "sewer_sensor_count": 10.0
+          },
+          "동대문구": {
+            "sewer_sensor_count": 56.0
+          },
+          "동작구": {
+            "sewer_sensor_count": 46.0
+          },
+          "마포구": {
+            "sewer_sensor_count": 20.0
+          },
+          "서대문구": {
+            "sewer_sensor_count": 15.0
+          },
+          "서초구": {
+            "sewer_sensor_count": 65.0
+          },
+          "성동구": {
+            "sewer_sensor_count": 11.0
+          },
+          "성북구": {
+            "sewer_sensor_count": 7.0
+          },
+          "송파구": {
+            "sewer_sensor_count": 22.0
+          },
+          "양천구": {
+            "sewer_sensor_count": 13.0
+          },
+          "영등포구": {
+            "sewer_sensor_count": 18.0
+          },
+          "용산구": {
+            "sewer_sensor_count": 9.0
+          },
+          "은평구": {
+            "sewer_sensor_count": 14.0
+          },
+          "종로구": {
+            "sewer_sensor_count": 5.0
+          },
+          "중구": {
+            "sewer_sensor_count": 6.0
+          },
+          "중랑구": {
+            "sewer_sensor_count": 13.0
+          }
+        },
+        "max_by_metric": {
+          "sewer_sensor_count": 116.0
+        },
+        "image_summary": {
+          "dataset": "sewer_level_sensor_gu_stats",
+          "used": true,
+          "district_count": 25,
+          "band_names": [
+            "sewer_sensor_count_norm"
+          ],
+          "matched_adm2_count": 25,
+          "reason": null,
+          "mapped_districts": [
+            "강남구",
+            "강동구",
+            "강북구",
+            "강서구",
+            "관악구",
+            "광진구",
+            "구로구",
+            "금천구",
+            "노원구",
+            "도봉구",
+            "동대문구",
+            "동작구",
+            "마포구",
+            "서대문구",
+            "서초구",
+            "성동구",
+            "성북구",
+            "송파구",
+            "양천구",
+            "영등포구",
+            "용산구",
+            "은평구",
+            "종로구",
+            "중구",
+            "중랑구"
+          ],
+          "unmapped_districts": []
+        }
+      }
+    ],
+    "drainage_feature_groups": {
+      "point_density": [],
+      "gu_stats": [
+        "pump_capacity_sum_norm",
+        "pump_catchment_area_sum_norm",
+        "pump_reservoir_capacity_sum_norm",
+        "pump_station_count_norm",
+        "sewer_sensor_count_norm"
+      ],
+      "all": [
+        "pump_capacity_sum_norm",
+        "pump_catchment_area_sum_norm",
+        "pump_reservoir_capacity_sum_norm",
+        "pump_station_count_norm",
+        "sewer_sensor_count_norm"
+      ]
+    }
+  },
+  "selected_model": {
+    "name": "Hybrid-plus-drainage-gu-stats",
+    "bands": [
+      "slope",
+      "hnd",
+      "log_upa",
+      "water_occ",
+      "built",
+      "lowland",
+      "alpha_score",
+      "pump_capacity_sum_norm",
+      "pump_catchment_area_sum_norm",
+      "pump_reservoir_capacity_sum_norm",
+      "pump_station_count_norm",
+      "sewer_sensor_count_norm"
+    ],
+    "validation_fold": 0,
+    "selected_fold_accuracy": 0.8525,
+    "selected_fold_kappa": 0.7050000000000001,
+    "probability_stats": null,
+    "hotspot_threshold": null,
+    "hotspot_area": null,
+    "feature_importance": [
+      {
+        "feature": "log_upa",
+        "importance_mean": 0.14135654724842578,
+        "importance_std": 0
+      },
+      {
+        "feature": "alpha_score",
+        "importance_mean": 0.1386319564630076,
+        "importance_std": 0
+      },
+      {
+        "feature": "lowland",
+        "importance_mean": 0.10856424956035632,
+        "importance_std": 0
+      },
+      {
+        "feature": "hnd",
+        "importance_mean": 0.10850596620310506,
+        "importance_std": 0
+      },
+      {
+        "feature": "slope",
+        "importance_mean": 0.10769273923132877,
+        "importance_std": 0
+      },
+      {
+        "feature": "built",
+        "importance_mean": 0.10249436819238707,
+        "importance_std": 0
+      },
+      {
+        "feature": "sewer_sensor_count_norm",
+        "importance_mean": 0.09691515135317101,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_capacity_sum_norm",
+        "importance_mean": 0.06492719301206139,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_reservoir_capacity_sum_norm",
+        "importance_mean": 0.05561150398551387,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_catchment_area_sum_norm",
+        "importance_mean": 0.04671855733941894,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_station_count_norm",
+        "importance_mean": 0.028581767411224125,
+        "importance_std": 0
+      },
+      {
+        "feature": "water_occ",
+        "importance_mean": 0.0,
+        "importance_std": 0
+      }
+    ]
+  },
+  "validation": {
+    "summary": {
+      "accuracy_mean": 0.7775000000000001,
+      "accuracy_std": 0.036400549446402586,
+      "kappa_mean": 0.5549999999999999,
+      "kappa_std": 0.07280109889280519
+    },
+    "fold_results": [
+      {
+        "model": "Hybrid-basic",
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            191,
+            9
+          ],
+          [
+            4,
+            196
+          ]
+        ],
+        "valid_confusion": [
+          [
+            162,
+            38
+          ],
+          [
+            35,
+            165
+          ]
+        ],
+        "valid_accuracy": 0.8175,
+        "valid_kappa": 0.635,
+        "hotspot_point_recall": {
+          "top_20_percent": 0.7096774193548387,
+          "top_10_percent": 0.25806451612903225,
+          "top_5_percent": 0.16129032258064516
+        }
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 1,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 191,
+        "valid_positive_count": 66,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            193,
+            7
+          ],
+          [
+            7,
+            193
+          ]
+        ],
+        "valid_confusion": [
+          [
+            149,
+            51
+          ],
+          [
+            56,
+            144
+          ]
+        ],
+        "valid_accuracy": 0.7325,
+        "valid_kappa": 0.4650000000000001,
+        "hotspot_point_recall": {
+          "top_20_percent": 0.6515151515151515,
+          "top_10_percent": 0.4090909090909091,
+          "top_5_percent": 0.21212121212121213
+        }
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 2,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            192,
+            8
+          ],
+          [
+            11,
+            189
+          ]
+        ],
+        "valid_confusion": [
+          [
+            150,
+            50
+          ],
+          [
+            25,
+            175
+          ]
+        ],
+        "valid_accuracy": 0.8125,
+        "valid_kappa": 0.625,
+        "hotspot_point_recall": {
+          "top_20_percent": 0.68,
+          "top_10_percent": 0.42,
+          "top_5_percent": 0.22
+        }
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 3,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 197,
+        "valid_positive_count": 60,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            192,
+            8
+          ],
+          [
+            7,
+            193
+          ]
+        ],
+        "valid_confusion": [
+          [
+            161,
+            39
+          ],
+          [
+            56,
+            144
+          ]
+        ],
+        "valid_accuracy": 0.7625,
+        "valid_kappa": 0.5249999999999999,
+        "hotspot_point_recall": {
+          "top_20_percent": 0.6333333333333333,
+          "top_10_percent": 0.31666666666666665,
+          "top_5_percent": 0.21666666666666667
+        }
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 4,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            192,
+            8
+          ],
+          [
+            5,
+            195
+          ]
+        ],
+        "valid_confusion": [
+          [
+            146,
+            54
+          ],
+          [
+            41,
+            159
+          ]
+        ],
+        "valid_accuracy": 0.7625,
+        "valid_kappa": 0.5249999999999999,
+        "hotspot_point_recall": {
+          "top_20_percent": 0.7,
+          "top_10_percent": 0.48,
+          "top_5_percent": 0.34
+        }
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            190,
+            10
+          ],
+          [
+            4,
+            196
+          ]
+        ],
+        "valid_confusion": [
+          [
+            157,
+            43
+          ],
+          [
+            16,
+            184
+          ]
+        ],
+        "valid_accuracy": 0.8525,
+        "valid_kappa": 0.7050000000000001
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "fold": 1,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 191,
+        "valid_positive_count": 66,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            194,
+            6
+          ],
+          [
+            7,
+            193
+          ]
+        ],
+        "valid_confusion": [
+          [
+            169,
+            31
+          ],
+          [
+            49,
+            151
+          ]
+        ],
+        "valid_accuracy": 0.8,
+        "valid_kappa": 0.6000000000000001
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "fold": 2,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            191,
+            9
+          ],
+          [
+            7,
+            193
+          ]
+        ],
+        "valid_confusion": [
+          [
+            179,
+            21
+          ],
+          [
+            40,
+            160
+          ]
+        ],
+        "valid_accuracy": 0.8475,
+        "valid_kappa": 0.6950000000000001
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "fold": 3,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 197,
+        "valid_positive_count": 60,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            195,
+            5
+          ],
+          [
+            4,
+            196
+          ]
+        ],
+        "valid_confusion": [
+          [
+            165,
+            35
+          ],
+          [
+            48,
+            152
+          ]
+        ],
+        "valid_accuracy": 0.7925,
+        "valid_kappa": 0.585
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "fold": 4,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            196,
+            4
+          ],
+          [
+            5,
+            195
+          ]
+        ],
+        "valid_confusion": [
+          [
+            174,
+            26
+          ],
+          [
+            25,
+            175
+          ]
+        ],
+        "valid_accuracy": 0.8725,
+        "valid_kappa": 0.7450000000000001
+      }
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "log_upa",
+      "importance_mean": 0.18809703009812218,
+      "importance_std": 0.0160487635545134
+    },
+    {
+      "feature": "alpha_score",
+      "importance_mean": 0.18148131274876106,
+      "importance_std": 0.015440260032353841
+    },
+    {
+      "feature": "slope",
+      "importance_mean": 0.168686808658202,
+      "importance_std": 0.011705301398892264
+    },
+    {
+      "feature": "built",
+      "importance_mean": 0.16546863442438084,
+      "importance_std": 0.018694700858563708
+    },
+    {
+      "feature": "hnd",
+      "importance_mean": 0.1489391553563731,
+      "importance_std": 0.011299218317015186
+    },
+    {
+      "feature": "lowland",
+      "importance_mean": 0.14732031154125022,
+      "importance_std": 0.011853120831317138
+    },
+    {
+      "feature": "water_occ",
+      "importance_mean": 6.747172910613234e-06,
+      "importance_std": 1.5087137284076303e-05
+    }
+  ],
+  "topk": {
+    "cv_summary": [
+      {
+        "model": "Hybrid-basic",
+        "percentile": 80,
+        "top_percent": 20,
+        "evaluated_point_recall_mean": 0.6749051808406648,
+        "evaluated_point_recall_std": 0.032171911969969484,
+        "all_point_recall_mean": 0.6749051808406648,
+        "evaluated_point_lift_mean": 3.3473742048799826,
+        "hotspot_area_share_mean": 0.2016258984486127,
+        "hit_points_mean": 34.4,
+        "hotspot_area_km2_mean": 108.7468175503449
+      },
+      {
+        "model": "Hybrid-basic",
+        "percentile": 90,
+        "top_percent": 10,
+        "evaluated_point_recall_mean": 0.3767644183773216,
+        "evaluated_point_recall_std": 0.08842130595550574,
+        "all_point_recall_mean": 0.3767644183773216,
+        "evaluated_point_lift_mean": 3.7656162271791835,
+        "hotspot_area_share_mean": 0.10002627958533927,
+        "hit_points_mean": 19.8,
+        "hotspot_area_km2_mean": 53.94911893760999
+      },
+      {
+        "model": "Hybrid-basic",
+        "percentile": 95,
+        "top_percent": 5,
+        "evaluated_point_recall_mean": 0.2300156402737048,
+        "evaluated_point_recall_std": 0.0659894828396417,
+        "all_point_recall_mean": 0.2300156402737048,
+        "evaluated_point_lift_mean": 4.565152184642384,
+        "hotspot_area_share_mean": 0.05047804093489624,
+        "hit_points_mean": 12.0,
+        "hotspot_area_km2_mean": 27.225303644437513
+      }
+    ],
+    "selected_fold": []
+  },
+  "risk_grade": {
+    "thresholds": {},
+    "area_summary": [],
+    "point_summary": [],
+    "cumulative_point_summary": [],
+    "legend": {}
+  },
+  "alpha_ablation": null,
+  "feature_ablations": {
+    "no_water_occ": null,
+    "water_distance": null,
+    "drainage_infra": {
+      "Hybrid-plus-drainage-gu-stats": {
+        "accuracy_mean": 0.833,
+        "accuracy_std": 0.034928498393145976,
+        "kappa_mean": 0.666,
+        "kappa_std": 0.06985699678629195
+      }
+    }
+  },
+  "buffer_sensitivity": [],
+  "outputs": {
+    "html": "/Users/cho/alpha_earth/seoul_flood/selected_model_5fold_map.html",
+    "output_dir": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_5fold",
+    "metrics_json": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_5fold/metrics.json",
+    "cv_results_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_5fold/cv_results.csv",
+    "feature_importance_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_5fold/feature_importance.csv",
+    "topk_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_5fold/topk_summary.csv",
+    "selected_fold_topk_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_5fold/selected_fold_topk.csv",
+    "risk_grade_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_5fold/risk_grade_summary.csv",
+    "risk_grade_points_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_5fold/risk_grade_points.csv",
+    "cumulative_risk_grade_points_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_5fold/cumulative_risk_grade_points.csv"
+  }
+}

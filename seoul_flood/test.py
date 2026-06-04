@@ -1725,6 +1725,132 @@ def diagnose_validation_coverage(feature_image, input_bands, probability, valida
     }
 
 
+def safe_divide(numerator, denominator):
+    return numerator / denominator if denominator else None
+
+
+def auc_roc_from_scores(labels, scores):
+    """Mann-Whitney rank statistic 기반 ROC-AUC를 계산한다."""
+    positive_count = sum(labels)
+    negative_count = len(labels) - positive_count
+    if positive_count == 0 or negative_count == 0:
+        return None
+
+    ranked = sorted(zip(scores, labels), key=lambda item: item[0])
+    positive_rank_sum = 0.0
+    index = 0
+    while index < len(ranked):
+        end = index + 1
+        while end < len(ranked) and ranked[end][0] == ranked[index][0]:
+            end += 1
+        average_rank = (index + 1 + end) / 2
+        tied_positive_count = sum(label for _, label in ranked[index:end])
+        positive_rank_sum += tied_positive_count * average_rank
+        index = end
+
+    return (
+        positive_rank_sum - positive_count * (positive_count + 1) / 2
+    ) / (positive_count * negative_count)
+
+
+def average_precision_from_scores(labels, scores):
+    """Precision-recall curve의 average precision을 계산한다."""
+    positive_count = sum(labels)
+    if positive_count == 0:
+        return None
+
+    pairs = sorted(zip(scores, labels), key=lambda item: item[0], reverse=True)
+    true_positive = 0
+    false_positive = 0
+    precision_at_positive = []
+    for _, label in pairs:
+        if label == 1:
+            true_positive += 1
+            precision_at_positive.append(true_positive / (true_positive + false_positive))
+        else:
+            false_positive += 1
+    return sum(precision_at_positive) / positive_count
+
+
+def binary_classification_metrics(labels, scores, threshold=0.5):
+    """확률 예측과 0/1 label에서 주요 이진 분류 지표를 계산한다."""
+    predictions = [1 if score >= threshold else 0 for score in scores]
+    true_positive = sum(
+        1 for label, prediction in zip(labels, predictions)
+        if label == 1 and prediction == 1
+    )
+    true_negative = sum(
+        1 for label, prediction in zip(labels, predictions)
+        if label == 0 and prediction == 0
+    )
+    false_positive = sum(
+        1 for label, prediction in zip(labels, predictions)
+        if label == 0 and prediction == 1
+    )
+    false_negative = sum(
+        1 for label, prediction in zip(labels, predictions)
+        if label == 1 and prediction == 0
+    )
+
+    precision = safe_divide(true_positive, true_positive + false_positive)
+    recall = safe_divide(true_positive, true_positive + false_negative)
+    specificity = safe_divide(true_negative, true_negative + false_positive)
+    negative_predictive_value = safe_divide(true_negative, true_negative + false_negative)
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if precision is not None and recall is not None and precision + recall > 0
+        else None
+    )
+    balanced_accuracy = (
+        (recall + specificity) / 2
+        if recall is not None and specificity is not None
+        else None
+    )
+
+    return {
+        "threshold": threshold,
+        "sample_count": len(labels),
+        "positive_count": sum(labels),
+        "negative_count": len(labels) - sum(labels),
+        "true_positive": true_positive,
+        "true_negative": true_negative,
+        "false_positive": false_positive,
+        "false_negative": false_negative,
+        "accuracy": safe_divide(true_positive + true_negative, len(labels)),
+        "precision": precision,
+        "recall": recall,
+        "sensitivity": recall,
+        "specificity": specificity,
+        "f1": f1,
+        "balanced_accuracy": balanced_accuracy,
+        "negative_predictive_value": negative_predictive_value,
+        "false_positive_rate": (
+            1 - specificity if specificity is not None else None
+        ),
+        "false_negative_rate": (
+            1 - recall if recall is not None else None
+        ),
+        "roc_auc": auc_roc_from_scores(labels, scores),
+        "pr_auc": average_precision_from_scores(labels, scores),
+        "average_precision": average_precision_from_scores(labels, scores),
+    }
+
+
+def compute_sample_classification_metrics(sample_fc, classifier):
+    """샘플 FeatureCollection에서 확률 기반 검증 지표를 계산한다."""
+    evaluated = sample_fc.classify(classifier, "probability")
+    features = evaluated.select(["label", "probability"]).getInfo()["features"]
+    labels = []
+    scores = []
+    for feature in features:
+        props = feature["properties"]
+        if props.get("label") is None or props.get("probability") is None:
+            continue
+        labels.append(int(props["label"]))
+        scores.append(float(props["probability"]))
+    return binary_classification_metrics(labels, scores)
+
+
 def run_hybrid_fold(
     validation_fold,
     positive_buffer_m=POSITIVE_BUFFER_M,
@@ -1763,6 +1889,7 @@ def run_hybrid_fold(
     classifier = train_rf(train_fc, input_bands)
     train_conf = evaluate_fc(train_fc, classifier)
     valid_conf = evaluate_fc(valid_fc, classifier)
+    valid_metrics = compute_sample_classification_metrics(valid_fc, classifier)
     result = {
         "fold": validation_fold,
         "positive_buffer_m": positive_buffer_m,
@@ -1777,6 +1904,7 @@ def run_hybrid_fold(
         "valid_confusion": valid_conf.getInfo(),
         "valid_accuracy": valid_conf.accuracy().getInfo(),
         "valid_kappa": valid_conf.kappa().getInfo(),
+        "valid_metrics": valid_metrics,
         "classifier": classifier,
         **fold_inputs,
     }
@@ -1860,15 +1988,40 @@ def sample_std(values):
     return (sum((value - avg) ** 2 for value in values) / (len(values) - 1)) ** 0.5
 
 
+CLASSIFICATION_METRIC_KEYS = [
+    "roc_auc",
+    "pr_auc",
+    "average_precision",
+    "precision",
+    "recall",
+    "specificity",
+    "f1",
+    "balanced_accuracy",
+    "negative_predictive_value",
+    "false_positive_rate",
+    "false_negative_rate",
+]
+
+
 def summarize_validation(rows):
     accuracies = [row["valid_accuracy"] for row in rows]
     kappas = [row["valid_kappa"] for row in rows]
-    return {
+    summary = {
         "accuracy_mean": mean(accuracies),
         "accuracy_std": sample_std(accuracies),
         "kappa_mean": mean(kappas),
         "kappa_std": sample_std(kappas),
     }
+    for metric_key in CLASSIFICATION_METRIC_KEYS:
+        values = [
+            row.get("valid_metrics", {}).get(metric_key)
+            for row in rows
+            if row.get("valid_metrics", {}).get(metric_key) is not None
+        ]
+        if values:
+            summary[f"{metric_key}_mean"] = mean(values)
+            summary[f"{metric_key}_std"] = sample_std(values)
+    return summary
 
 
 def sanitize_fold_result(row):
@@ -1887,6 +2040,7 @@ def sanitize_fold_result(row):
         "valid_confusion": row["valid_confusion"],
         "valid_accuracy": row["valid_accuracy"],
         "valid_kappa": row["valid_kappa"],
+        "valid_metrics": row.get("valid_metrics", {}),
     }
     if "hotspot_metrics" in row:
         result["hotspot_point_recall"] = compact_hotspot_recall(
@@ -2126,6 +2280,19 @@ def run_spatial_cv(
             "valid_kappa": result["valid_kappa"],
             "valid_confusion": result["valid_confusion"],
         }
+        if "valid_metrics" in result:
+            fold_log["valid_metrics"] = {
+                key: result["valid_metrics"].get(key)
+                for key in [
+                    "roc_auc",
+                    "pr_auc",
+                    "precision",
+                    "recall",
+                    "f1",
+                    "specificity",
+                    "balanced_accuracy",
+                ]
+            }
         if "hotspot_metrics" in result:
             fold_log["hotspot_point_recall"] = compact_hotspot_recall(
                 result["hotspot_metrics"]
@@ -2370,6 +2537,7 @@ print("Selected model:", selected_model_name)
 print("Selected bands:", selected_feature_bands)
 print("Selected fold validation accuracy:", hybrid_result["valid_accuracy"])
 print("Selected fold validation kappa:", hybrid_result["valid_kappa"])
+print("Selected fold validation metrics:", hybrid_result.get("valid_metrics", {}))
 selected_importance_summary = summarize_importance([hybrid_result], selected_feature_bands)
 print("Selected model normalized feature importance summary:")
 for row in selected_importance_summary:
@@ -2531,6 +2699,7 @@ metrics_payload = {
         "validation_fold": VALIDATION_FOLD,
         "selected_fold_accuracy": hybrid_result["valid_accuracy"],
         "selected_fold_kappa": hybrid_result["valid_kappa"],
+        "selected_fold_metrics": hybrid_result.get("valid_metrics", {}),
         "probability_stats": prob_stats,
         "hotspot_threshold": threshold,
         "hotspot_area": hotspot_area,
