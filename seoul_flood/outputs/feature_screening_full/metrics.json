@@ -1,0 +1,775 @@
+{
+  "config": {
+    "year": 2024,
+    "analysis_scale": 30,
+    "boundary_buffer_m": 0,
+    "reference_point_limit": 0,
+    "positive_sample_points": 200,
+    "negative_points": 200,
+    "positive_buffer_m": 60,
+    "negative_buffer_m": 300,
+    "hotspot_percentile": 95,
+    "hotspot_eval_percentiles": [
+      80,
+      90,
+      95
+    ],
+    "risk_grade_percentiles": [
+      50,
+      75,
+      90,
+      95
+    ],
+    "spatial_block_degrees": 0.015,
+    "spatial_folds": 5,
+    "validation_fold": 0,
+    "evaluation_folds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "run_full_cv": true,
+    "run_feature_ablations": true,
+    "run_alpha_ablation": false,
+    "run_hotspot_eval": false,
+    "hotspot_eval_in_cv": false,
+    "generate_map_outputs": false,
+    "run_buffer_sensitivity": false,
+    "water_distance_pixels": 256,
+    "risk_grade_palette": [
+      "#2b83ba",
+      "#abdda4",
+      "#ffffbf",
+      "#fdae61",
+      "#d7191c"
+    ],
+    "risk_grade_names": [
+      "Very low",
+      "Low",
+      "Moderate",
+      "High",
+      "Very high"
+    ]
+  },
+  "data": {
+    "reference_geojson": "/Users/cho/alpha_earth/seoul_flood/source/seoul_flood_reference_points.geojson",
+    "reference_points_total": 300,
+    "reference_points_in_analysis_boundary": 257,
+    "reference_points_excluded": 43,
+    "positive_fold_histogram": {
+      "0": 31,
+      "1": 66,
+      "2": 50,
+      "3": 60,
+      "4": 50
+    },
+    "selected_train_positive_count": 226,
+    "selected_validation_positive_count": 31
+  },
+  "selected_model": {
+    "name": "Hybrid-basic",
+    "bands": [
+      "slope",
+      "hnd",
+      "log_upa",
+      "water_occ",
+      "built",
+      "lowland",
+      "alpha_score"
+    ],
+    "validation_fold": 0,
+    "selected_fold_accuracy": 0.8175,
+    "selected_fold_kappa": 0.635,
+    "probability_stats": null,
+    "hotspot_threshold": null,
+    "hotspot_area": null
+  },
+  "validation": {
+    "summary": {
+      "accuracy_mean": 0.7775000000000001,
+      "accuracy_std": 0.036400549446402586,
+      "kappa_mean": 0.5549999999999999,
+      "kappa_std": 0.07280109889280519
+    },
+    "fold_results": [
+      {
+        "model": "Hybrid-basic",
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            191,
+            9
+          ],
+          [
+            4,
+            196
+          ]
+        ],
+        "valid_confusion": [
+          [
+            162,
+            38
+          ],
+          [
+            35,
+            165
+          ]
+        ],
+        "valid_accuracy": 0.8175,
+        "valid_kappa": 0.635
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 1,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 191,
+        "valid_positive_count": 66,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            193,
+            7
+          ],
+          [
+            7,
+            193
+          ]
+        ],
+        "valid_confusion": [
+          [
+            149,
+            51
+          ],
+          [
+            56,
+            144
+          ]
+        ],
+        "valid_accuracy": 0.7325,
+        "valid_kappa": 0.4650000000000001
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 2,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            192,
+            8
+          ],
+          [
+            11,
+            189
+          ]
+        ],
+        "valid_confusion": [
+          [
+            150,
+            50
+          ],
+          [
+            25,
+            175
+          ]
+        ],
+        "valid_accuracy": 0.8125,
+        "valid_kappa": 0.625
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 3,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 197,
+        "valid_positive_count": 60,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            192,
+            8
+          ],
+          [
+            7,
+            193
+          ]
+        ],
+        "valid_confusion": [
+          [
+            161,
+            39
+          ],
+          [
+            56,
+            144
+          ]
+        ],
+        "valid_accuracy": 0.7625,
+        "valid_kappa": 0.5249999999999999
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 4,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            192,
+            8
+          ],
+          [
+            5,
+            195
+          ]
+        ],
+        "valid_confusion": [
+          [
+            146,
+            54
+          ],
+          [
+            41,
+            159
+          ]
+        ],
+        "valid_accuracy": 0.7625,
+        "valid_kappa": 0.5249999999999999
+      },
+      {
+        "model": "Hybrid-no-water-occ",
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            192,
+            8
+          ],
+          [
+            4,
+            196
+          ]
+        ],
+        "valid_confusion": [
+          [
+            163,
+            37
+          ],
+          [
+            34,
+            166
+          ]
+        ],
+        "valid_accuracy": 0.8225,
+        "valid_kappa": 0.645
+      },
+      {
+        "model": "Hybrid-no-water-occ",
+        "fold": 1,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 191,
+        "valid_positive_count": 66,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            193,
+            7
+          ],
+          [
+            7,
+            193
+          ]
+        ],
+        "valid_confusion": [
+          [
+            146,
+            54
+          ],
+          [
+            55,
+            145
+          ]
+        ],
+        "valid_accuracy": 0.7275,
+        "valid_kappa": 0.45500000000000007
+      },
+      {
+        "model": "Hybrid-no-water-occ",
+        "fold": 2,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            192,
+            8
+          ],
+          [
+            8,
+            192
+          ]
+        ],
+        "valid_confusion": [
+          [
+            145,
+            55
+          ],
+          [
+            30,
+            170
+          ]
+        ],
+        "valid_accuracy": 0.7875,
+        "valid_kappa": 0.575
+      },
+      {
+        "model": "Hybrid-no-water-occ",
+        "fold": 3,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 197,
+        "valid_positive_count": 60,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            193,
+            7
+          ],
+          [
+            6,
+            194
+          ]
+        ],
+        "valid_confusion": [
+          [
+            159,
+            41
+          ],
+          [
+            60,
+            140
+          ]
+        ],
+        "valid_accuracy": 0.7475,
+        "valid_kappa": 0.4950000000000001
+      },
+      {
+        "model": "Hybrid-no-water-occ",
+        "fold": 4,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            192,
+            8
+          ],
+          [
+            4,
+            196
+          ]
+        ],
+        "valid_confusion": [
+          [
+            146,
+            54
+          ],
+          [
+            42,
+            158
+          ]
+        ],
+        "valid_accuracy": 0.76,
+        "valid_kappa": 0.52
+      },
+      {
+        "model": "Hybrid-plus-water-distance",
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            192,
+            8
+          ],
+          [
+            5,
+            195
+          ]
+        ],
+        "valid_confusion": [
+          [
+            153,
+            47
+          ],
+          [
+            35,
+            165
+          ]
+        ],
+        "valid_accuracy": 0.795,
+        "valid_kappa": 0.5900000000000001
+      },
+      {
+        "model": "Hybrid-plus-water-distance",
+        "fold": 1,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 191,
+        "valid_positive_count": 66,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            196,
+            4
+          ],
+          [
+            9,
+            191
+          ]
+        ],
+        "valid_confusion": [
+          [
+            146,
+            54
+          ],
+          [
+            67,
+            133
+          ]
+        ],
+        "valid_accuracy": 0.6975,
+        "valid_kappa": 0.395
+      },
+      {
+        "model": "Hybrid-plus-water-distance",
+        "fold": 2,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            196,
+            4
+          ],
+          [
+            7,
+            193
+          ]
+        ],
+        "valid_confusion": [
+          [
+            149,
+            51
+          ],
+          [
+            25,
+            175
+          ]
+        ],
+        "valid_accuracy": 0.81,
+        "valid_kappa": 0.6200000000000001
+      },
+      {
+        "model": "Hybrid-plus-water-distance",
+        "fold": 3,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 197,
+        "valid_positive_count": 60,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            194,
+            6
+          ],
+          [
+            7,
+            193
+          ]
+        ],
+        "valid_confusion": [
+          [
+            157,
+            43
+          ],
+          [
+            61,
+            139
+          ]
+        ],
+        "valid_accuracy": 0.74,
+        "valid_kappa": 0.48
+      },
+      {
+        "model": "Hybrid-plus-water-distance",
+        "fold": 4,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            196,
+            4
+          ],
+          [
+            6,
+            194
+          ]
+        ],
+        "valid_confusion": [
+          [
+            147,
+            53
+          ],
+          [
+            43,
+            157
+          ]
+        ],
+        "valid_accuracy": 0.76,
+        "valid_kappa": 0.52
+      }
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "log_upa",
+      "importance_mean": 0.18809703009812218,
+      "importance_std": 0.0160487635545134
+    },
+    {
+      "feature": "alpha_score",
+      "importance_mean": 0.18148131274876106,
+      "importance_std": 0.015440260032353841
+    },
+    {
+      "feature": "slope",
+      "importance_mean": 0.168686808658202,
+      "importance_std": 0.011705301398892264
+    },
+    {
+      "feature": "built",
+      "importance_mean": 0.16546863442438084,
+      "importance_std": 0.018694700858563708
+    },
+    {
+      "feature": "hnd",
+      "importance_mean": 0.1489391553563731,
+      "importance_std": 0.011299218317015186
+    },
+    {
+      "feature": "lowland",
+      "importance_mean": 0.14732031154125022,
+      "importance_std": 0.011853120831317138
+    },
+    {
+      "feature": "water_occ",
+      "importance_mean": 6.747172910613234e-06,
+      "importance_std": 1.5087137284076303e-05
+    }
+  ],
+  "topk": {
+    "cv_summary": [],
+    "selected_fold": []
+  },
+  "risk_grade": {
+    "thresholds": {},
+    "area_summary": [],
+    "point_summary": [],
+    "cumulative_point_summary": [],
+    "legend": {}
+  },
+  "alpha_ablation": null,
+  "feature_ablations": {
+    "no_water_occ": {
+      "accuracy_mean": 0.769,
+      "accuracy_std": 0.03697972417420117,
+      "kappa_mean": 0.538,
+      "kappa_std": 0.07395944834840235
+    },
+    "water_distance": {
+      "accuracy_mean": 0.7605000000000001,
+      "accuracy_std": 0.04480513363443973,
+      "kappa_mean": 0.5210000000000001,
+      "kappa_std": 0.08961026726887945
+    }
+  },
+  "buffer_sensitivity": [],
+  "outputs": {
+    "html": "/Users/cho/alpha_earth/seoul_flood/feature_screening_full_map.html",
+    "output_dir": "/Users/cho/alpha_earth/seoul_flood/outputs/feature_screening_full",
+    "metrics_json": "/Users/cho/alpha_earth/seoul_flood/outputs/feature_screening_full/metrics.json",
+    "cv_results_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/feature_screening_full/cv_results.csv",
+    "feature_importance_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/feature_screening_full/feature_importance.csv",
+    "topk_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/feature_screening_full/topk_summary.csv",
+    "selected_fold_topk_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/feature_screening_full/selected_fold_topk.csv",
+    "risk_grade_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/feature_screening_full/risk_grade_summary.csv",
+    "risk_grade_points_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/feature_screening_full/risk_grade_points.csv",
+    "cumulative_risk_grade_points_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/feature_screening_full/cumulative_risk_grade_points.csv"
+  }
+}

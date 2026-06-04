@@ -3,9 +3,12 @@ import json
 import os
 import html
 import re
+import tempfile
+import zipfile
 
 import ee
 import geemap
+import shapefile
 
 
 def load_env_file(path=".env"):
@@ -120,6 +123,271 @@ def write_csv(path, rows):
             )
 
 
+SEOUL_GU_TO_ADM2_SHAPE = {
+    "종로구": "Jongno-gu",
+    "중구": "Jung-gu [Central District]",
+    "용산구": "Yongsan-gu",
+    "성동구": "Seongdong-gu",
+    "광진구": "Gwangjin-gu",
+    "동대문구": "Dongdaemun-gu",
+    "중랑구": "Jungnang-gu",
+    "성북구": "Seongbuk-gu",
+    "강북구": "Gangbuk-gu",
+    "도봉구": "Dobong-gu",
+    "노원구": "Nowon-gu",
+    "은평구": "Eunpyeong-gu",
+    "서대문구": "Seodaemun-gu",
+    "마포구": "Mapo-gu",
+    "양천구": "Yangcheon-gu",
+    "강서구": "Gangseo-gu",
+    "구로구": "Guro-gu",
+    "금천구": "Geumcheon-gu",
+    "영등포구": "Yeongdeungpo-gu",
+    "동작구": "Dongjak-gu",
+    "관악구": "Gwanak-gu",
+    "서초구": "Seocho-gu",
+    "강남구": "Gangnam-gu",
+    "송파구": "Songpa-gu",
+    "강동구": "Gangdong-gu",
+}
+SEOUL_GU_ORDER = list(SEOUL_GU_TO_ADM2_SHAPE)
+SEOUL_GU_NAMES = set(SEOUL_GU_TO_ADM2_SHAPE)
+
+
+def parse_number(value):
+    """공개데이터 CSV의 숫자 문자열을 float으로 변환한다."""
+    cleaned = str(value or "").replace(",", "").strip()
+    if not cleaned:
+        return 0.0
+    try:
+        return float(cleaned)
+    except ValueError:
+        return 0.0
+
+
+def normalize_seoul_gu_name(value):
+    """서울 자치구 이름만 표준화해서 반환한다."""
+    name = str(value or "").strip()
+    if not name:
+        return None
+    if name == "중":
+        return "중구"
+    if not name.endswith("구") and f"{name}구" in SEOUL_GU_NAMES:
+        return f"{name}구"
+    return name if name in SEOUL_GU_NAMES else None
+
+
+def extract_seoul_gu_from_text(*values):
+    text = " ".join(str(value or "") for value in values)
+    matches = [
+        (text.find(gu_name), gu_name)
+        for gu_name in SEOUL_GU_ORDER
+        if gu_name in text
+    ]
+    if matches:
+        return sorted(matches)[0][1]
+    return None
+
+
+def normalize_gu_stats(raw_stats_by_gu, metric_names):
+    """구별 원자료를 0~1 feature로 정규화한다."""
+    max_by_metric = {
+        metric: max(
+            (stats.get(metric, 0.0) for stats in raw_stats_by_gu.values()),
+            default=0.0,
+        )
+        for metric in metric_names
+    }
+    normalized = {}
+    for gu_name, raw_stats in raw_stats_by_gu.items():
+        normalized[gu_name] = {}
+        for metric in metric_names:
+            max_value = max_by_metric[metric]
+            band_name = f"{metric}_norm"
+            normalized[gu_name][band_name] = (
+                raw_stats.get(metric, 0.0) / max_value if max_value else 0.0
+            )
+    return normalized, max_by_metric
+
+
+def read_csv_with_fallback(path, encodings=("utf-8-sig", "cp949")):
+    last_error = None
+    for encoding in encodings:
+        try:
+            with open(path, "r", encoding=encoding, newline="") as f:
+                return list(csv.DictReader(f)), encoding
+        except UnicodeDecodeError as error:
+            last_error = error
+    raise last_error
+
+
+def load_pump_station_gu_stats(csv_path, min_districts):
+    """배수펌프장 CSV를 자치구별 정적 feature 후보로 요약한다."""
+    summary = {
+        "dataset": "pump_station_gu_stats",
+        "path": csv_path,
+        "exists": os.path.exists(csv_path),
+        "raw_records": 0,
+        "unique_stations": 0,
+        "district_count": 0,
+        "used": False,
+        "reason": None,
+    }
+    if not summary["exists"]:
+        summary["reason"] = "file_missing"
+        return {}, summary
+
+    rows, encoding = read_csv_with_fallback(csv_path, encodings=("cp949", "utf-8-sig"))
+    summary["encoding"] = encoding
+    summary["raw_records"] = len(rows)
+    unique_stations = {}
+    skipped_rows = 0
+    for row in rows:
+        gu_name = extract_seoul_gu_from_text(row.get("상세주소"), row.get("주소"))
+        if gu_name is None:
+            gu_name = normalize_seoul_gu_name(row.get("시설관리자"))
+        if gu_name is None:
+            skipped_rows += 1
+            continue
+
+        address = (row.get("상세주소") or row.get("주소") or "").strip()
+        facility_name = (row.get("시설물명") or "").strip()
+        key = (gu_name, facility_name, address)
+        station_stats = unique_stations.setdefault(
+            key,
+            {
+                "pump_station_count": 1.0,
+                "pump_capacity_sum": 0.0,
+                "pump_catchment_area_sum": 0.0,
+                "pump_reservoir_capacity_sum": 0.0,
+            },
+        )
+        # 같은 펌프장이 배수문별 행으로 반복되는 경우가 많아, 중복 행은 최대값만 보존한다.
+        station_stats["pump_capacity_sum"] = max(
+            station_stats["pump_capacity_sum"],
+            parse_number(row.get("배수장_최대배수량")),
+        )
+        station_stats["pump_catchment_area_sum"] = max(
+            station_stats["pump_catchment_area_sum"],
+            parse_number(row.get("유역면적")),
+        )
+        station_stats["pump_reservoir_capacity_sum"] = max(
+            station_stats["pump_reservoir_capacity_sum"],
+            parse_number(row.get("유수지용량")),
+        )
+
+    raw_stats_by_gu = {}
+    for (gu_name, _, _), station_stats in unique_stations.items():
+        gu_stats = raw_stats_by_gu.setdefault(
+            gu_name,
+            {
+                "pump_station_count": 0.0,
+                "pump_capacity_sum": 0.0,
+                "pump_catchment_area_sum": 0.0,
+                "pump_reservoir_capacity_sum": 0.0,
+            },
+        )
+        for metric_name, metric_value in station_stats.items():
+            gu_stats[metric_name] += metric_value
+
+    metric_names = [
+        "pump_station_count",
+        "pump_capacity_sum",
+        "pump_catchment_area_sum",
+        "pump_reservoir_capacity_sum",
+    ]
+    normalized_stats_by_gu, max_by_metric = normalize_gu_stats(raw_stats_by_gu, metric_names)
+    summary.update(
+        {
+            "unique_stations": len(unique_stations),
+            "district_count": len(raw_stats_by_gu),
+            "skipped_rows": skipped_rows,
+            "raw_stats_by_gu": raw_stats_by_gu,
+            "max_by_metric": max_by_metric,
+        }
+    )
+    if summary["district_count"] < min_districts:
+        summary["reason"] = "too_few_districts"
+        return {}, summary
+
+    summary["used"] = True
+    return normalized_stats_by_gu, summary
+
+
+def load_sewer_sensor_gu_stats(summary_csv_path, raw_csv_path, min_districts):
+    """하수관로 수위 자료에서 자치구별 관측소 수 feature 후보를 만든다."""
+    summary = {
+        "dataset": "sewer_level_sensor_gu_stats",
+        "summary_path": summary_csv_path,
+        "raw_path": raw_csv_path,
+        "summary_exists": os.path.exists(summary_csv_path),
+        "raw_exists": os.path.exists(raw_csv_path),
+        "district_count": 0,
+        "used": False,
+        "reason": None,
+    }
+
+    raw_stats_by_gu = {}
+    if summary["summary_exists"]:
+        rows, encoding = read_csv_with_fallback(summary_csv_path)
+        summary["encoding"] = encoding
+        summary["source"] = "summary_csv"
+        for row in rows:
+            gu_name = normalize_seoul_gu_name(row.get("gu") or row.get("구분명"))
+            if gu_name is None:
+                continue
+            raw_stats_by_gu[gu_name] = {
+                "sewer_sensor_count": parse_number(row.get("sensor_count")),
+            }
+    elif summary["raw_exists"]:
+        summary["source"] = "raw_csv"
+        sensor_ids_by_gu = {}
+        last_error = None
+        for encoding in ("cp949", "utf-8-sig"):
+            try:
+                with open(raw_csv_path, "r", encoding=encoding, newline="") as f:
+                    reader = csv.DictReader(f)
+                    id_field = reader.fieldnames[0] if reader.fieldnames else None
+                    if id_field is None:
+                        continue
+                    for row in reader:
+                        gu_name = normalize_seoul_gu_name(row.get("구분명"))
+                        sensor_id = str(row.get(id_field) or "").strip()
+                        if gu_name and sensor_id:
+                            sensor_ids_by_gu.setdefault(gu_name, set()).add(sensor_id)
+                summary["encoding"] = encoding
+                break
+            except UnicodeDecodeError as error:
+                last_error = error
+        else:
+            raise last_error
+        raw_stats_by_gu = {
+            gu_name: {"sewer_sensor_count": float(len(sensor_ids))}
+            for gu_name, sensor_ids in sensor_ids_by_gu.items()
+        }
+    else:
+        summary["reason"] = "file_missing"
+        return {}, summary
+
+    normalized_stats_by_gu, max_by_metric = normalize_gu_stats(
+        raw_stats_by_gu,
+        ["sewer_sensor_count"],
+    )
+    summary.update(
+        {
+            "district_count": len(raw_stats_by_gu),
+            "raw_stats_by_gu": raw_stats_by_gu,
+            "max_by_metric": max_by_metric,
+        }
+    )
+    if summary["district_count"] < min_districts:
+        summary["reason"] = "too_few_districts"
+        return {}, summary
+
+    summary["used"] = True
+    return normalized_stats_by_gu, summary
+
+
 # 실행 환경에서 조정할 수 있는 주요 설정값들이다.
 # EE_PROJECT_ID만 필수이고, 나머지는 없으면 기본값을 사용한다.
 PROJECT_ID = os.environ.get("EE_PROJECT_ID")
@@ -201,12 +469,21 @@ RUN_FEATURE_ABLATIONS = os.environ.get(
     "RUN_FEATURE_ABLATIONS",
     "1" if RUN_FULL_CV else "0",
 ) == "1"
+RUN_WATER_FEATURE_ABLATIONS = os.environ.get(
+    "RUN_WATER_FEATURE_ABLATIONS",
+    "1" if RUN_FEATURE_ABLATIONS else "0",
+) == "1"
+RUN_DRAINAGE_ABLATION = os.environ.get(
+    "RUN_DRAINAGE_ABLATION",
+    "1" if RUN_FEATURE_ABLATIONS else "0",
+) == "1"
 RUN_ALPHA_ABLATION = os.environ.get("RUN_ALPHA_ABLATION", "0") == "1"
 RUN_HOTSPOT_EVAL = os.environ.get("RUN_HOTSPOT_EVAL", "1") == "1"
 HOTSPOT_EVAL_IN_CV = os.environ.get(
     "HOTSPOT_EVAL_IN_CV",
     "1" if RUN_FULL_CV else "0",
 ) == "1"
+GENERATE_MAP_OUTPUTS = os.environ.get("GENERATE_MAP_OUTPUTS", "1") == "1"
 RUN_COVERAGE_DIAGNOSTICS = os.environ.get("RUN_COVERAGE_DIAGNOSTICS", "0") == "1"
 RUN_BUFFER_SENSITIVITY = os.environ.get("RUN_BUFFER_SENSITIVITY", "0") == "1"
 POSITIVE_BUFFER_SWEEP_M = parse_int_list(
@@ -219,6 +496,44 @@ BUFFER_SENSITIVITY_FOLDS = parse_int_list(
     os.environ.get("BUFFER_SENSITIVITY_FOLDS", str(VALIDATION_FOLD))
 )
 WATER_DISTANCE_PIXELS = int(os.environ.get("WATER_DISTANCE_PIXELS", "256"))
+DRAINAGE_FEATURE_MODE = os.environ.get("DRAINAGE_FEATURE_MODE", "gu_stats").strip().lower()
+if DRAINAGE_FEATURE_MODE not in {"none", "points", "gu_stats", "all"}:
+    raise ValueError("DRAINAGE_FEATURE_MODE는 none, points, gu_stats, all 중 하나여야 합니다.")
+DRAINAGE_INFRA_ENABLED = os.environ.get(
+    "DRAINAGE_INFRA_ENABLED",
+    "1" if RUN_DRAINAGE_ABLATION or DRAINAGE_FEATURE_MODE in {"points", "all"} else "0",
+) == "1"
+DRAINAGE_INFRA_RADIUS_M = int(os.environ.get("DRAINAGE_INFRA_RADIUS_M", "500"))
+DRAINAGE_INFRA_MIN_ACTIVE_POINTS = int(
+    os.environ.get("DRAINAGE_INFRA_MIN_ACTIVE_POINTS", "500")
+)
+DRAINAGE_GU_STATS_ENABLED = os.environ.get(
+    "DRAINAGE_GU_STATS_ENABLED",
+    "1" if RUN_DRAINAGE_ABLATION or DRAINAGE_FEATURE_MODE in {"gu_stats", "all"} else "0",
+) == "1"
+DRAINAGE_GU_STATS_MIN_DISTRICTS = int(
+    os.environ.get("DRAINAGE_GU_STATS_MIN_DISTRICTS", "5")
+)
+LID_PRECONSULT_ZIP = resolve_input_path(
+    os.environ.get("LID_PRECONSULT_ZIP", "source/SP_BNLC_AS.zip"),
+    fallback_dir=os.path.join(SCRIPT_DIR, "source"),
+)
+RAINWATER_USE_ZIP = resolve_input_path(
+    os.environ.get("RAINWATER_USE_ZIP", "source/SP_LGRC_AS.zip"),
+    fallback_dir=os.path.join(SCRIPT_DIR, "source"),
+)
+PUMP_STATION_CSV = resolve_input_path(
+    os.environ.get("PUMP_STATION_CSV", "source/seoul_pump_stations.csv"),
+    fallback_dir=os.path.join(SCRIPT_DIR, "source"),
+)
+SEWER_SENSOR_GU_STATS_CSV = resolve_input_path(
+    os.environ.get("SEWER_SENSOR_GU_STATS_CSV", "source/sewer_level_sensor_gu_stats.csv"),
+    fallback_dir=os.path.join(SCRIPT_DIR, "source"),
+)
+SEWER_LEVEL_SENSOR_CSV = resolve_input_path(
+    os.environ.get("SEWER_LEVEL_SENSOR_CSV", "source/sewer_level_202605.csv"),
+    fallback_dir=os.path.join(SCRIPT_DIR, "source"),
+)
 
 # Google Earth Engine에 접속한다.
 ee.Initialize(project=PROJECT_ID)
@@ -242,6 +557,168 @@ def add_spatial_fold(fc):
         return feature.set({"block_x": block_x, "block_y": block_y, "fold": fold})
 
     return fc.map(_add_fold)
+
+
+def load_epsg5186_point_zip(zip_path, dataset_name, min_active_points):
+    """서울시 EPSG:5186 shapefile zip을 EE point FeatureCollection으로 변환한다."""
+    summary = {
+        "dataset": dataset_name,
+        "path": zip_path,
+        "exists": os.path.exists(zip_path),
+        "raw_records": 0,
+        "active_points": 0,
+        "used": False,
+        "reason": None,
+    }
+    if not summary["exists"]:
+        summary["reason"] = "file_missing"
+        return ee.FeatureCollection([]), summary
+
+    features = []
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with zipfile.ZipFile(zip_path) as zip_file:
+            zip_file.extractall(tmp_dir)
+
+        shp_paths = [
+            os.path.join(tmp_dir, name)
+            for name in os.listdir(tmp_dir)
+            if name.lower().endswith(".shp")
+        ]
+        if not shp_paths:
+            summary["reason"] = "shapefile_missing"
+            return ee.FeatureCollection([]), summary
+
+        reader = shapefile.Reader(shp_paths[0], encoding="cp949")
+        fields = [field[0] for field in reader.fields[1:]]
+        del_idx = fields.index("DEL_YN") if "DEL_YN" in fields else None
+        summary["raw_records"] = len(reader)
+
+        for shape_record in reader.iterShapeRecords():
+            if del_idx is not None and str(shape_record.record[del_idx]).upper() == "Y":
+                continue
+            for point in shape_record.shape.points:
+                features.append(
+                    ee.Feature(
+                        ee.Geometry.Point(
+                            point,
+                            ee.Projection("EPSG:5186"),
+                        ),
+                        {"one": 1, "dataset": dataset_name},
+                    )
+                )
+
+    summary["active_points"] = len(features)
+    if summary["active_points"] < min_active_points:
+        summary["reason"] = "too_few_active_points"
+        return ee.FeatureCollection([]), summary
+
+    summary["used"] = True
+    return ee.FeatureCollection(features), summary
+
+
+def make_point_density_feature(point_fc, band_name, radius_m):
+    """주변 반경 내 point 개수를 0~1 범위의 밀도 feature로 만든다."""
+    raw_band = f"{band_name}_raw"
+    point_image = (
+        point_fc.reduceToImage(["one"], ee.Reducer.sum())
+        .unmask(0)
+        .rename(f"{band_name}_points")
+        .clip(seoul)
+        .reproject(crs=dem.projection(), scale=ANALYSIS_SCALE)
+    )
+    density_raw = (
+        point_image.reduceNeighborhood(
+            reducer=ee.Reducer.sum(),
+            kernel=ee.Kernel.circle(radius=radius_m, units="meters"),
+        )
+        .rename(raw_band)
+        .clip(seoul)
+    )
+    stats = density_raw.reduceRegion(
+        reducer=ee.Reducer.percentile([95]),
+        geometry=seoul,
+        scale=ANALYSIS_SCALE,
+        maxPixels=1e9,
+        bestEffort=True,
+        tileScale=4,
+    ).getInfo()
+    p95 = stats.get(f"{raw_band}_p95") or 1
+    p95 = max(float(p95), 1)
+    density = density_raw.divide(p95).clamp(0, 1).rename(band_name)
+    return density, p95
+
+
+def make_gu_stat_feature_images(stats_by_gu, dataset_name):
+    """자치구별 통계 feature를 ADM2 경계에 칠한 raster band로 변환한다."""
+    band_names = sorted(
+        {
+            band_name
+            for gu_stats in stats_by_gu.values()
+            for band_name in gu_stats
+        }
+    )
+    summary = {
+        "dataset": dataset_name,
+        "used": False,
+        "district_count": len(stats_by_gu),
+        "band_names": band_names,
+        "matched_adm2_count": 0,
+        "reason": None,
+    }
+    if not band_names:
+        summary["reason"] = "no_bands"
+        return [], [], summary
+
+    stats_by_shape_name = {}
+    unmapped_districts = []
+    for gu_name, gu_stats in stats_by_gu.items():
+        shape_name = SEOUL_GU_TO_ADM2_SHAPE.get(gu_name)
+        if shape_name is None:
+            unmapped_districts.append(gu_name)
+            continue
+        stats_by_shape_name[shape_name] = gu_stats
+
+    if not stats_by_shape_name:
+        summary["reason"] = "no_mapped_districts"
+        summary["unmapped_districts"] = unmapped_districts
+        return [], [], summary
+
+    default_props = {band_name: 0 for band_name in band_names}
+    stats_dict = ee.Dictionary(stats_by_shape_name)
+    adm2 = (
+        ee.FeatureCollection("WM/geoLab/geoBoundaries/600/ADM2")
+        .filter(ee.Filter.eq("shapeGroup", "KOR"))
+        .filterBounds(seoul)
+        .filter(ee.Filter.inList("shapeName", list(stats_by_shape_name.keys())))
+    )
+
+    def _set_gu_stats(feature):
+        stats = ee.Dictionary(stats_dict.get(feature.get("shapeName"), default_props))
+        return feature.setMulti(stats)
+
+    gu_stats_fc = adm2.map(_set_gu_stats)
+    matched_adm2_count = gu_stats_fc.size().getInfo()
+    summary.update(
+        {
+            "matched_adm2_count": matched_adm2_count,
+            "mapped_districts": sorted(stats_by_gu),
+            "unmapped_districts": sorted(unmapped_districts),
+        }
+    )
+    if matched_adm2_count == 0:
+        summary["reason"] = "adm2_not_matched"
+        return [], [], summary
+
+    images = [
+        gu_stats_fc.reduceToImage([band_name], ee.Reducer.first())
+        .unmask(0)
+        .rename(band_name)
+        .clip(seoul)
+        .reproject(crs=dem.projection(), scale=ANALYSIS_SCALE)
+        for band_name in band_names
+    ]
+    summary["used"] = True
+    return images, band_names, summary
 
 
 # -------------------------------------------------
@@ -305,11 +782,20 @@ print(
         "run_full_cv": RUN_FULL_CV,
         "evaluation_folds": EVALUATION_FOLDS,
         "feature_ablations": RUN_FEATURE_ABLATIONS,
+        "water_feature_ablations": RUN_WATER_FEATURE_ABLATIONS,
+        "drainage_ablation": RUN_DRAINAGE_ABLATION,
         "alpha_ablation": RUN_ALPHA_ABLATION,
         "hotspot_eval": RUN_HOTSPOT_EVAL,
         "hotspot_eval_in_cv": HOTSPOT_EVAL_IN_CV,
         "hotspot_eval_percentiles": HOTSPOT_EVAL_PERCENTILES,
         "risk_grade_percentiles": RISK_GRADE_PERCENTILES,
+        "generate_map_outputs": GENERATE_MAP_OUTPUTS,
+        "drainage_feature_mode": DRAINAGE_FEATURE_MODE,
+        "drainage_infra_enabled": DRAINAGE_INFRA_ENABLED,
+        "drainage_infra_radius_m": DRAINAGE_INFRA_RADIUS_M,
+        "drainage_infra_min_active_points": DRAINAGE_INFRA_MIN_ACTIVE_POINTS,
+        "drainage_gu_stats_enabled": DRAINAGE_GU_STATS_ENABLED,
+        "drainage_gu_stats_min_districts": DRAINAGE_GU_STATS_MIN_DISTRICTS,
         "coverage_diagnostics": RUN_COVERAGE_DIAGNOSTICS,
         "buffer_sensitivity": RUN_BUFFER_SENSITIVITY,
     },
@@ -425,6 +911,104 @@ lowland = (
     .rename("lowland")
 )
 
+# 데이터 양이 충분한 빗물관리 인프라만 후보 feature로 사용한다.
+# 작은 시설별 파일은 레코드 수가 적어 우선 제외하고, 밀도가 의미 있게 계산되는
+# 저영향개발 사전협의 지점과 빗물이용시설 지점만 1차 후보로 둔다.
+drainage_infra_summary = []
+drainage_feature_images = []
+drainage_feature_bands = []
+drainage_point_feature_bands = []
+drainage_gu_feature_bands = []
+if DRAINAGE_INFRA_ENABLED:
+    drainage_sources = [
+        {
+            "dataset": "lid_preconsult",
+            "path": LID_PRECONSULT_ZIP,
+            "band": "lid_preconsult_density",
+        },
+        {
+            "dataset": "rainwater_use",
+            "path": RAINWATER_USE_ZIP,
+            "band": "rainwater_use_density",
+        },
+    ]
+    for source in drainage_sources:
+        point_fc, source_summary = load_epsg5186_point_zip(
+            source["path"],
+            source["dataset"],
+            DRAINAGE_INFRA_MIN_ACTIVE_POINTS,
+        )
+        if source_summary["used"]:
+            inside_count = point_fc.filterBounds(seoul).size().getInfo()
+            source_summary["points_in_analysis_boundary"] = inside_count
+            if inside_count < DRAINAGE_INFRA_MIN_ACTIVE_POINTS:
+                source_summary["used"] = False
+                source_summary["reason"] = "too_few_points_inside_analysis_boundary"
+                drainage_infra_summary.append(source_summary)
+                continue
+            density_image, density_p95 = make_point_density_feature(
+                point_fc,
+                source["band"],
+                DRAINAGE_INFRA_RADIUS_M,
+            )
+            drainage_feature_images.append(density_image)
+            drainage_feature_bands.append(source["band"])
+            drainage_point_feature_bands.append(source["band"])
+            source_summary.update(
+                {
+                    "band": source["band"],
+                    "density_radius_m": DRAINAGE_INFRA_RADIUS_M,
+                    "density_p95": density_p95,
+                }
+            )
+        drainage_infra_summary.append(source_summary)
+else:
+    drainage_infra_summary.append(
+        {
+            "dataset": "drainage_infra",
+            "used": False,
+            "reason": "disabled",
+        }
+    )
+if DRAINAGE_GU_STATS_ENABLED:
+    gu_stat_sources = [
+        load_pump_station_gu_stats(
+            PUMP_STATION_CSV,
+            DRAINAGE_GU_STATS_MIN_DISTRICTS,
+        ),
+        load_sewer_sensor_gu_stats(
+            SEWER_SENSOR_GU_STATS_CSV,
+            SEWER_LEVEL_SENSOR_CSV,
+            DRAINAGE_GU_STATS_MIN_DISTRICTS,
+        ),
+    ]
+    for stats_by_gu, source_summary in gu_stat_sources:
+        if source_summary["used"]:
+            stat_images, stat_bands, image_summary = make_gu_stat_feature_images(
+                stats_by_gu,
+                source_summary["dataset"],
+            )
+            source_summary["image_summary"] = image_summary
+            if image_summary["used"]:
+                drainage_feature_images.extend(stat_images)
+                drainage_feature_bands.extend(stat_bands)
+                drainage_gu_feature_bands.extend(stat_bands)
+            else:
+                source_summary["used"] = False
+                source_summary["reason"] = image_summary["reason"]
+        drainage_infra_summary.append(source_summary)
+else:
+    drainage_infra_summary.append(
+        {
+            "dataset": "drainage_gu_stats",
+            "used": False,
+            "reason": "disabled",
+        }
+    )
+print("Drainage/rain-management infrastructure summary:")
+for row in drainage_infra_summary:
+    print(row)
+
 # AlphaEarth similarity to official Seoul flood positives
 # AlphaEarth/Satellite Embedding은 위성영상 패턴을 압축한 다중 밴드 표현이다.
 # 공식 침수 기준점 주변의 평균 임베딩과 각 픽셀의 임베딩 거리를 계산해,
@@ -448,12 +1032,19 @@ valid_band_names = band_names
 emb_valid = emb.select(valid_band_names).unmask(0)
 static_feature_image = ee.Image.cat(
     [slope, hnd, log_upa, water_occ, built, lowland, water_dist_m]
+    + drainage_feature_images
 )
 base_static_feature_bands = ["slope", "hnd", "log_upa", "water_occ", "built", "lowland"]
 water_distance_feature_bands = ["water_dist_m"]
 alpha_feature_bands = ["alpha_score"]
 hybrid_feature_bands = base_static_feature_bands + alpha_feature_bands
+drainage_candidate_feature_bands = hybrid_feature_bands + drainage_feature_bands
+drainage_point_candidate_feature_bands = hybrid_feature_bands + drainage_point_feature_bands
+drainage_gu_candidate_feature_bands = hybrid_feature_bands + drainage_gu_feature_bands
 print("Fixed hybrid model bands:", hybrid_feature_bands)
+print("Drainage candidate bands:", drainage_feature_bands)
+print("Drainage point-density candidate bands:", drainage_point_feature_bands)
+print("Drainage gu-stat candidate bands:", drainage_gu_feature_bands)
 print("Candidate static feature bands:", static_feature_image.bandNames().getInfo())
 
 def make_negative_mask(negative_buffer_m):
@@ -556,7 +1147,7 @@ def build_hybrid_inputs(validation_fold, positive_buffer_m):
     }
 
 
-def sample_split(feature_image, positive_mask, negative_mask, area_mask, seed):
+def sample_split(feature_image, input_bands, positive_mask, negative_mask, area_mask, seed):
     """공간 fold별 양성/음성 영역에서 학습 또는 검증 샘플을 만든다."""
     split_positive_mask = positive_mask.updateMask(area_mask)
     split_negative_mask = negative_mask.updateMask(area_mask)
@@ -569,7 +1160,11 @@ def sample_split(feature_image, positive_mask, negative_mask, area_mask, seed):
     sampling_mask = (
         split_negative_mask.unmask(0).add(split_positive_mask.unmask(0)).gt(0)
     )
-    split_image = feature_image.addBands(label_image).updateMask(sampling_mask)
+    split_image = (
+        feature_image.select(input_bands)
+        .addBands(label_image)
+        .updateMask(sampling_mask)
+    )
     return split_image.stratifiedSample(
         numPoints=0,
         classBand="label",
@@ -1146,6 +1741,7 @@ def run_hybrid_fold(
     negative_mask = make_negative_mask(negative_buffer_m)
     train_fc = sample_split(
         fold_inputs["feature_image"],
+        input_bands,
         fold_inputs["positive_train_mask"],
         negative_mask,
         fold_inputs["train_area_mask"],
@@ -1153,6 +1749,7 @@ def run_hybrid_fold(
     )
     valid_fc = sample_split(
         fold_inputs["feature_image"],
+        input_bands,
         fold_inputs["positive_valid_mask"],
         negative_mask,
         fold_inputs["valid_area_mask"],
@@ -1591,65 +2188,152 @@ no_water_cv_results = []
 no_water_cv_summary = None
 water_dist_cv_results = []
 water_dist_cv_summary = None
+drainage_cv_results_by_model = {}
+drainage_cv_summaries = {}
+
+if not RUN_FEATURE_ABLATIONS:
+    if DRAINAGE_FEATURE_MODE == "points" and drainage_point_feature_bands:
+        selected_model_name = "Hybrid-plus-drainage-points"
+        selected_feature_bands = drainage_point_candidate_feature_bands
+    elif DRAINAGE_FEATURE_MODE == "gu_stats" and drainage_gu_feature_bands:
+        selected_model_name = "Hybrid-plus-drainage-gu-stats"
+        selected_feature_bands = drainage_gu_candidate_feature_bands
+    elif DRAINAGE_FEATURE_MODE == "all" and drainage_feature_bands:
+        selected_model_name = "Hybrid-plus-drainage-infra"
+        selected_feature_bands = drainage_candidate_feature_bands
+    if selected_model_name != "Hybrid-basic":
+        print(
+            "Default drainage feature mode selected:",
+            {
+                "mode": DRAINAGE_FEATURE_MODE,
+                "model": selected_model_name,
+                "bands": selected_feature_bands,
+            },
+        )
 
 if RUN_FEATURE_ABLATIONS:
-    no_water_feature_bands = [
-        band for band in hybrid_feature_bands if band != "water_occ"
-    ]
-    no_water_cv_results = run_spatial_cv(
-        "Hybrid-no-water-occ",
-        no_water_feature_bands,
-        include_importance=False,
-    )
-    no_water_cv_summary = summarize_validation(no_water_cv_results)
-    print("Hybrid-no-water-occ validation summary:", no_water_cv_summary)
-    print(
-        "Water occurrence ablation:",
-        {
-            "baseline_kappa_mean": cv_summary["kappa_mean"],
-            "no_water_kappa_mean": no_water_cv_summary["kappa_mean"],
-            "delta_kappa": no_water_cv_summary["kappa_mean"] - cv_summary["kappa_mean"],
-            "baseline_accuracy_mean": cv_summary["accuracy_mean"],
-            "no_water_accuracy_mean": no_water_cv_summary["accuracy_mean"],
-            "delta_accuracy": no_water_cv_summary["accuracy_mean"] - cv_summary["accuracy_mean"],
-        },
-    )
+    if RUN_WATER_FEATURE_ABLATIONS:
+        no_water_feature_bands = [
+            band for band in hybrid_feature_bands if band != "water_occ"
+        ]
+        no_water_cv_results = run_spatial_cv(
+            "Hybrid-no-water-occ",
+            no_water_feature_bands,
+            include_importance=False,
+        )
+        no_water_cv_summary = summarize_validation(no_water_cv_results)
+        print("Hybrid-no-water-occ validation summary:", no_water_cv_summary)
+        print(
+            "Water occurrence ablation:",
+            {
+                "baseline_kappa_mean": cv_summary["kappa_mean"],
+                "no_water_kappa_mean": no_water_cv_summary["kappa_mean"],
+                "delta_kappa": no_water_cv_summary["kappa_mean"] - cv_summary["kappa_mean"],
+                "baseline_accuracy_mean": cv_summary["accuracy_mean"],
+                "no_water_accuracy_mean": no_water_cv_summary["accuracy_mean"],
+                "delta_accuracy": no_water_cv_summary["accuracy_mean"] - cv_summary["accuracy_mean"],
+            },
+        )
 
-    if no_water_cv_summary["kappa_mean"] >= selected_kappa_mean:
-        selected_model_name = "Hybrid-no-water-occ"
-        selected_feature_bands = no_water_feature_bands
-        selected_kappa_mean = no_water_cv_summary["kappa_mean"]
-        print("Selected feature set: water_occ removed from RF inputs.")
+        if no_water_cv_summary["kappa_mean"] >= selected_kappa_mean:
+            selected_model_name = "Hybrid-no-water-occ"
+            selected_feature_bands = no_water_feature_bands
+            selected_kappa_mean = no_water_cv_summary["kappa_mean"]
+            print("Selected feature set: water_occ removed from RF inputs.")
+        else:
+            print("Selected feature set: keeping water_occ in RF inputs.")
+
+        water_dist_feature_bands = hybrid_feature_bands + water_distance_feature_bands
+        water_dist_cv_results = run_spatial_cv(
+            "Hybrid-plus-water-distance",
+            water_dist_feature_bands,
+            include_importance=False,
+        )
+        water_dist_cv_summary = summarize_validation(water_dist_cv_results)
+        print("Hybrid-plus-water-distance validation summary:", water_dist_cv_summary)
+        print(
+            "Water distance ablation:",
+            {
+                "baseline_kappa_mean": cv_summary["kappa_mean"],
+                "water_dist_kappa_mean": water_dist_cv_summary["kappa_mean"],
+                "delta_kappa": water_dist_cv_summary["kappa_mean"] - cv_summary["kappa_mean"],
+                "baseline_accuracy_mean": cv_summary["accuracy_mean"],
+                "water_dist_accuracy_mean": water_dist_cv_summary["accuracy_mean"],
+                "delta_accuracy": water_dist_cv_summary["accuracy_mean"] - cv_summary["accuracy_mean"],
+            },
+        )
+
+        if water_dist_cv_summary["kappa_mean"] > selected_kappa_mean:
+            selected_model_name = "Hybrid-plus-water-distance"
+            selected_feature_bands = water_dist_feature_bands
+            selected_kappa_mean = water_dist_cv_summary["kappa_mean"]
+            print("Selected feature set: water_dist_m added to RF inputs.")
+        else:
+            print("Selected feature set: water_dist_m not added to RF inputs.")
     else:
-        print("Selected feature set: keeping water_occ in RF inputs.")
+        print("Water feature ablations skipped.")
 
-    water_dist_feature_bands = hybrid_feature_bands + water_distance_feature_bands
-    water_dist_cv_results = run_spatial_cv(
-        "Hybrid-plus-water-distance",
-        water_dist_feature_bands,
-        include_importance=False,
-    )
-    water_dist_cv_summary = summarize_validation(water_dist_cv_results)
-    print("Hybrid-plus-water-distance validation summary:", water_dist_cv_summary)
-    print(
-        "Water distance ablation:",
-        {
-            "baseline_kappa_mean": cv_summary["kappa_mean"],
-            "water_dist_kappa_mean": water_dist_cv_summary["kappa_mean"],
-            "delta_kappa": water_dist_cv_summary["kappa_mean"] - cv_summary["kappa_mean"],
-            "baseline_accuracy_mean": cv_summary["accuracy_mean"],
-            "water_dist_accuracy_mean": water_dist_cv_summary["accuracy_mean"],
-            "delta_accuracy": water_dist_cv_summary["accuracy_mean"] - cv_summary["accuracy_mean"],
-        },
-    )
+    if RUN_DRAINAGE_ABLATION and drainage_feature_bands:
+        drainage_candidate_configs = []
+        if drainage_point_feature_bands:
+            drainage_candidate_configs.append(
+                {
+                    "model": "Hybrid-plus-drainage-points",
+                    "bands": drainage_point_candidate_feature_bands,
+                }
+            )
+        if drainage_gu_feature_bands:
+            drainage_candidate_configs.append(
+                {
+                    "model": "Hybrid-plus-drainage-gu-stats",
+                    "bands": drainage_gu_candidate_feature_bands,
+                }
+            )
+        if drainage_point_feature_bands and drainage_gu_feature_bands:
+            drainage_candidate_configs.append(
+                {
+                    "model": "Hybrid-plus-drainage-infra",
+                    "bands": drainage_candidate_feature_bands,
+                }
+            )
 
-    if water_dist_cv_summary["kappa_mean"] > selected_kappa_mean:
-        selected_model_name = "Hybrid-plus-water-distance"
-        selected_feature_bands = water_dist_feature_bands
-        selected_kappa_mean = water_dist_cv_summary["kappa_mean"]
-        print("Selected feature set: water_dist_m added to RF inputs.")
+        for config in drainage_candidate_configs:
+            model_name = config["model"]
+            candidate_bands = config["bands"]
+            candidate_results = run_spatial_cv(
+                model_name,
+                candidate_bands,
+                include_importance=False,
+            )
+            candidate_summary = summarize_validation(candidate_results)
+            drainage_cv_results_by_model[model_name] = candidate_results
+            drainage_cv_summaries[model_name] = candidate_summary
+            print(f"{model_name} validation summary:", candidate_summary)
+            print(
+                f"{model_name} validation delta:",
+                {
+                    "baseline_kappa_mean": cv_summary["kappa_mean"],
+                    "candidate_kappa_mean": candidate_summary["kappa_mean"],
+                    "delta_kappa": candidate_summary["kappa_mean"] - cv_summary["kappa_mean"],
+                    "baseline_accuracy_mean": cv_summary["accuracy_mean"],
+                    "candidate_accuracy_mean": candidate_summary["accuracy_mean"],
+                    "delta_accuracy": candidate_summary["accuracy_mean"] - cv_summary["accuracy_mean"],
+                },
+            )
+
+            if candidate_summary["kappa_mean"] > selected_kappa_mean:
+                selected_model_name = model_name
+                selected_feature_bands = candidate_bands
+                selected_kappa_mean = candidate_summary["kappa_mean"]
+
+        if selected_model_name.startswith("Hybrid-plus-drainage"):
+            print("Selected feature set: drainage candidate added to RF inputs.")
+        else:
+            print("Selected feature set: drainage candidates not added to RF inputs.")
+    elif RUN_DRAINAGE_ABLATION:
+        print("Drainage infrastructure candidate skipped: no source passed data-volume filter.")
     else:
-        print("Selected feature set: water_dist_m not added to RF inputs.")
+        print("Drainage infrastructure ablation skipped.")
 else:
     print("\nFeature ablations skipped for fast model-building run.")
     print("Set RUN_FEATURE_ABLATIONS=1 to retest candidate feature sets.")
@@ -1661,73 +2345,94 @@ else:
 
 hybrid_result = run_hybrid_fold(
     VALIDATION_FOLD,
-    include_map_outputs=True,
-    include_hotspot_metrics=RUN_HOTSPOT_EVAL,
+    include_map_outputs=GENERATE_MAP_OUTPUTS,
+    include_importance=True,
+    include_hotspot_metrics=RUN_HOTSPOT_EVAL and GENERATE_MAP_OUTPUTS,
     input_bands=selected_feature_bands,
 )
-seoul_probability = hybrid_result["probability"]
+seoul_probability = None
 alpha_score = hybrid_result["alpha_score"]
-hotspots = hybrid_result["hotspots"]
-threshold = hybrid_result["threshold"]
-prob_stats = hybrid_result["prob_stats"]
-hotspot_area = hybrid_result["hotspot_area"]
+hotspots = None
+threshold = None
+prob_stats = None
+hotspot_area = None
 valid_area_mask = hybrid_result["valid_area_mask"]
 valid_positive_points = hybrid_result["valid_positive"]
-risk_grade, risk_grade_thresholds, risk_grade_summaries = build_risk_grade(seoul_probability)
-risk_grade_point_metrics, cumulative_risk_grade_point_metrics = (
-    compute_risk_grade_point_metrics(
-        risk_grade,
-        valid_positive_points,
-        risk_grade_summaries,
-    )
-)
-risk_grade_legend = build_risk_grade_legend(risk_grade_summaries)
+risk_grade = None
+risk_grade_thresholds = {}
+risk_grade_summaries = []
+risk_grade_point_metrics = []
+cumulative_risk_grade_point_metrics = []
+risk_grade_legend = {}
 
-print(f"\nSelected map fold: {VALIDATION_FOLD}")
-print("Selected map model:", selected_model_name)
-print("Selected map bands:", selected_feature_bands)
+print(f"\nSelected fold: {VALIDATION_FOLD}")
+print("Selected model:", selected_model_name)
+print("Selected bands:", selected_feature_bands)
 print("Selected fold validation accuracy:", hybrid_result["valid_accuracy"])
 print("Selected fold validation kappa:", hybrid_result["valid_kappa"])
-print("Seoul probability stats:", prob_stats)
-print(f"P{HOTSPOT_PERCENTILE} threshold:", threshold)
-print("Hotspot area (km²):", hotspot_area)
-print("Risk grade percentile thresholds:", risk_grade_thresholds)
-print("Risk grade area summary:")
-for row in risk_grade_summaries:
+selected_importance_summary = summarize_importance([hybrid_result], selected_feature_bands)
+print("Selected model normalized feature importance summary:")
+for row in selected_importance_summary:
     print(row)
-print("Risk grade legend:", risk_grade_legend)
-print("Risk grade validation point summary:")
-for row in risk_grade_point_metrics:
-    print(row)
-print("Cumulative high-risk grade validation point summary:")
-for row in cumulative_risk_grade_point_metrics:
-    print(row)
-if "hotspot_metrics" in hybrid_result:
-    print("Selected fold hotspot recall metrics:")
-    for row in hybrid_result["hotspot_metrics"]:
+
+if GENERATE_MAP_OUTPUTS:
+    seoul_probability = hybrid_result["probability"]
+    hotspots = hybrid_result["hotspots"]
+    threshold = hybrid_result["threshold"]
+    prob_stats = hybrid_result["prob_stats"]
+    hotspot_area = hybrid_result["hotspot_area"]
+    risk_grade, risk_grade_thresholds, risk_grade_summaries = build_risk_grade(seoul_probability)
+    risk_grade_point_metrics, cumulative_risk_grade_point_metrics = (
+        compute_risk_grade_point_metrics(
+            risk_grade,
+            valid_positive_points,
+            risk_grade_summaries,
+        )
+    )
+    risk_grade_legend = build_risk_grade_legend(risk_grade_summaries)
+
+    print("Seoul probability stats:", prob_stats)
+    print(f"P{HOTSPOT_PERCENTILE} threshold:", threshold)
+    print("Hotspot area (km²):", hotspot_area)
+    print("Risk grade percentile thresholds:", risk_grade_thresholds)
+    print("Risk grade area summary:")
+    for row in risk_grade_summaries:
         print(row)
-if RUN_COVERAGE_DIAGNOSTICS:
-    coverage_diagnostics = diagnose_validation_coverage(
-        hybrid_result["feature_image"],
-        selected_feature_bands,
-        seoul_probability,
-        valid_positive_points,
-    )
-    print("Selected fold validation coverage diagnostics:")
-    print(
-        {
-            "validation_points": coverage_diagnostics["validation_points"],
-            "diagnostic_samples": coverage_diagnostics["diagnostic_samples"],
-            "inside_seoul_pixel_count": coverage_diagnostics["inside_seoul_pixel_count"],
-            "all_input_bands_valid_count": coverage_diagnostics["all_input_bands_valid_count"],
-            "probability_valid_count": coverage_diagnostics["probability_valid_count"],
-            "band_valid_counts": coverage_diagnostics["band_valid_counts"],
-        }
-    )
-    if coverage_diagnostics["missing_points"]:
-        print("Validation points without full prediction coverage:")
-        for row in coverage_diagnostics["missing_points"]:
+    print("Risk grade legend:", risk_grade_legend)
+    print("Risk grade validation point summary:")
+    for row in risk_grade_point_metrics:
+        print(row)
+    print("Cumulative high-risk grade validation point summary:")
+    for row in cumulative_risk_grade_point_metrics:
+        print(row)
+    if "hotspot_metrics" in hybrid_result:
+        print("Selected fold hotspot recall metrics:")
+        for row in hybrid_result["hotspot_metrics"]:
             print(row)
+    if RUN_COVERAGE_DIAGNOSTICS:
+        coverage_diagnostics = diagnose_validation_coverage(
+            hybrid_result["feature_image"],
+            selected_feature_bands,
+            seoul_probability,
+            valid_positive_points,
+        )
+        print("Selected fold validation coverage diagnostics:")
+        print(
+            {
+                "validation_points": coverage_diagnostics["validation_points"],
+                "diagnostic_samples": coverage_diagnostics["diagnostic_samples"],
+                "inside_seoul_pixel_count": coverage_diagnostics["inside_seoul_pixel_count"],
+                "all_input_bands_valid_count": coverage_diagnostics["all_input_bands_valid_count"],
+                "probability_valid_count": coverage_diagnostics["probability_valid_count"],
+                "band_valid_counts": coverage_diagnostics["band_valid_counts"],
+            }
+        )
+        if coverage_diagnostics["missing_points"]:
+            print("Validation points without full prediction coverage:")
+            for row in coverage_diagnostics["missing_points"]:
+                print(row)
+else:
+    print("Map/risk-grade outputs skipped: GENERATE_MAP_OUTPUTS=0")
 
 cv_result_rows = [
     {"model": "Hybrid-basic", **sanitize_fold_result(row)}
@@ -1747,6 +2452,11 @@ if water_dist_cv_results:
     cv_result_rows.extend(
         {"model": "Hybrid-plus-water-distance", **sanitize_fold_result(row)}
         for row in water_dist_cv_results
+    )
+for model_name, result_rows in drainage_cv_results_by_model.items():
+    cv_result_rows.extend(
+        {"model": model_name, **sanitize_fold_result(row)}
+        for row in result_rows
     )
 
 topk_summary_rows = [
@@ -1778,11 +2488,25 @@ metrics_payload = {
         "evaluation_folds": EVALUATION_FOLDS,
         "run_full_cv": RUN_FULL_CV,
         "run_feature_ablations": RUN_FEATURE_ABLATIONS,
+        "run_water_feature_ablations": RUN_WATER_FEATURE_ABLATIONS,
+        "run_drainage_ablation": RUN_DRAINAGE_ABLATION,
         "run_alpha_ablation": RUN_ALPHA_ABLATION,
         "run_hotspot_eval": RUN_HOTSPOT_EVAL,
         "hotspot_eval_in_cv": HOTSPOT_EVAL_IN_CV,
+        "generate_map_outputs": GENERATE_MAP_OUTPUTS,
         "run_buffer_sensitivity": RUN_BUFFER_SENSITIVITY,
         "water_distance_pixels": WATER_DISTANCE_PIXELS,
+        "drainage_feature_mode": DRAINAGE_FEATURE_MODE,
+        "drainage_infra_enabled": DRAINAGE_INFRA_ENABLED,
+        "drainage_infra_radius_m": DRAINAGE_INFRA_RADIUS_M,
+        "drainage_infra_min_active_points": DRAINAGE_INFRA_MIN_ACTIVE_POINTS,
+        "drainage_gu_stats_enabled": DRAINAGE_GU_STATS_ENABLED,
+        "drainage_gu_stats_min_districts": DRAINAGE_GU_STATS_MIN_DISTRICTS,
+        "lid_preconsult_zip": LID_PRECONSULT_ZIP,
+        "rainwater_use_zip": RAINWATER_USE_ZIP,
+        "pump_station_csv": PUMP_STATION_CSV,
+        "sewer_sensor_gu_stats_csv": SEWER_SENSOR_GU_STATS_CSV,
+        "sewer_level_sensor_csv": SEWER_LEVEL_SENSOR_CSV,
         "risk_grade_palette": RISK_GRADE_PALETTE,
         "risk_grade_names": RISK_GRADE_NAMES,
     },
@@ -1794,6 +2518,12 @@ metrics_payload = {
         "positive_fold_histogram": positive_fold_hist,
         "selected_train_positive_count": train_positive_count,
         "selected_validation_positive_count": valid_positive_count,
+        "drainage_infra": drainage_infra_summary,
+        "drainage_feature_groups": {
+            "point_density": drainage_point_feature_bands,
+            "gu_stats": drainage_gu_feature_bands,
+            "all": drainage_feature_bands,
+        },
     },
     "selected_model": {
         "name": selected_model_name,
@@ -1804,6 +2534,7 @@ metrics_payload = {
         "probability_stats": prob_stats,
         "hotspot_threshold": threshold,
         "hotspot_area": hotspot_area,
+        "feature_importance": selected_importance_summary,
     },
     "validation": {
         "summary": cv_summary,
@@ -1828,6 +2559,7 @@ metrics_payload = {
     "feature_ablations": {
         "no_water_occ": no_water_cv_summary,
         "water_distance": water_dist_cv_summary,
+        "drainage_infra": drainage_cv_summaries,
     } if RUN_FEATURE_ABLATIONS else None,
     "buffer_sensitivity": buffer_sensitivity_rows,
     "outputs": {
@@ -1857,71 +2589,74 @@ save_experiment_outputs(
     },
 )
 
-# 결과 확인용 대화형 HTML 지도를 만든다.
-# 경계, 기준점, AlphaEarth 임베딩, Hybrid 확률, hotspot 레이어를 함께 저장한다.
-centroid = seoul.centroid().coordinates().getInfo()
-lon, lat = centroid[0], centroid[1]
-rgb_bands = valid_band_names[:3]
+if GENERATE_MAP_OUTPUTS:
+    # 결과 확인용 대화형 HTML 지도를 만든다.
+    # 경계, 기준점, AlphaEarth 임베딩, Hybrid 확률, hotspot 레이어를 함께 저장한다.
+    centroid = seoul.centroid().coordinates().getInfo()
+    lon, lat = centroid[0], centroid[1]
+    rgb_bands = valid_band_names[:3]
 
-Map = geemap.Map(center=[lat, lon], zoom=11, lite_mode=True)
-Map.addLayer(
-    ee.Image().paint(seoul_fc, 1, 2),
-    {"palette": ["cyan"]},
-    "Seoul boundary",
-)
-if BOUNDARY_BUFFER_M > 0:
-    analysis_region_fc = ee.FeatureCollection([ee.Feature(analysis_region)])
+    Map = geemap.Map(center=[lat, lon], zoom=11, lite_mode=True)
     Map.addLayer(
-        ee.Image().paint(analysis_region_fc, 1, 2),
-        {"palette": ["#ff7f00"]},
-        f"Analysis boundary (+{BOUNDARY_BUFFER_M}m)",
+        ee.Image().paint(seoul_fc, 1, 2),
+        {"palette": ["cyan"]},
+        "Seoul boundary",
     )
-Map.addLayer(
-    positive_points,
-    {"color": "#542788"},
-    "Analysis flood positives",
-)
-Map.addLayer(
-    valid_area_mask.selfMask(),
-    {"palette": ["#ffd92f"], "opacity": 0.25},
-    f"Validation spatial fold {VALIDATION_FOLD}",
-)
-Map.addLayer(
-    valid_positive_points,
-    {"color": "#1b9e77"},
-    "Held-out validation positives",
-)
-Map.addLayer(
-    emb.select(rgb_bands),
-    {"min": -0.3, "max": 0.3},
-    f"AlphaEarth {YEAR} ({','.join(rgb_bands)})",
-)
-Map.addLayer(
-    alpha_score,
-    {"min": 0, "max": 1, "palette": ["#f7f7f7", "#fdb863", "#e66101", "#b2182b"]},
-    "AlphaEarth flood similarity",
-)
-Map.addLayer(
-    seoul_probability,
-    {"min": 0, "max": 1, "palette": ["#f7fbff", "#6baed6", "#2171b5", "#08306b"]},
-    "Hybrid RF flood probability",
-)
-Map.addLayer(
-    risk_grade,
-    {
-        "min": 1,
-        "max": RISK_GRADE_COUNT,
-        "palette": RISK_GRADE_PALETTE,
-    },
-    "Hybrid RF risk grade",
-)
-Map.addLayer(
-    hotspots,
-    {"palette": ["red"]},
-    f"Hybrid hotspots (top {100 - HOTSPOT_PERCENTILE}%)",
-)
-Map.addLayerControl()
-Map.to_html(OUTPUT_HTML)
-sanitize_exported_widget_controls(OUTPUT_HTML)
-inject_static_legend(OUTPUT_HTML, "Hybrid RF risk grade", risk_grade_legend)
-print(f"Saved: {OUTPUT_HTML}")
+    if BOUNDARY_BUFFER_M > 0:
+        analysis_region_fc = ee.FeatureCollection([ee.Feature(analysis_region)])
+        Map.addLayer(
+            ee.Image().paint(analysis_region_fc, 1, 2),
+            {"palette": ["#ff7f00"]},
+            f"Analysis boundary (+{BOUNDARY_BUFFER_M}m)",
+        )
+    Map.addLayer(
+        positive_points,
+        {"color": "#542788"},
+        "Analysis flood positives",
+    )
+    Map.addLayer(
+        valid_area_mask.selfMask(),
+        {"palette": ["#ffd92f"], "opacity": 0.25},
+        f"Validation spatial fold {VALIDATION_FOLD}",
+    )
+    Map.addLayer(
+        valid_positive_points,
+        {"color": "#1b9e77"},
+        "Held-out validation positives",
+    )
+    Map.addLayer(
+        emb.select(rgb_bands),
+        {"min": -0.3, "max": 0.3},
+        f"AlphaEarth {YEAR} ({','.join(rgb_bands)})",
+    )
+    Map.addLayer(
+        alpha_score,
+        {"min": 0, "max": 1, "palette": ["#f7f7f7", "#fdb863", "#e66101", "#b2182b"]},
+        "AlphaEarth flood similarity",
+    )
+    Map.addLayer(
+        seoul_probability,
+        {"min": 0, "max": 1, "palette": ["#f7fbff", "#6baed6", "#2171b5", "#08306b"]},
+        "Hybrid RF flood probability",
+    )
+    Map.addLayer(
+        risk_grade,
+        {
+            "min": 1,
+            "max": RISK_GRADE_COUNT,
+            "palette": RISK_GRADE_PALETTE,
+        },
+        "Hybrid RF risk grade",
+    )
+    Map.addLayer(
+        hotspots,
+        {"palette": ["red"]},
+        f"Hybrid hotspots (top {100 - HOTSPOT_PERCENTILE}%)",
+    )
+    Map.addLayerControl()
+    Map.to_html(OUTPUT_HTML)
+    sanitize_exported_widget_controls(OUTPUT_HTML)
+    inject_static_legend(OUTPUT_HTML, "Hybrid RF risk grade", risk_grade_legend)
+    print(f"Saved: {OUTPUT_HTML}")
+else:
+    print("HTML map generation skipped: GENERATE_MAP_OUTPUTS=0")

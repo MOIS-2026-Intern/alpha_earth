@@ -1,0 +1,282 @@
+{
+  "config": {
+    "year": 2024,
+    "analysis_scale": 30,
+    "boundary_buffer_m": 0,
+    "reference_point_limit": 0,
+    "positive_sample_points": 200,
+    "negative_points": 200,
+    "positive_buffer_m": 60,
+    "negative_buffer_m": 300,
+    "hotspot_percentile": 95,
+    "hotspot_eval_percentiles": [
+      80,
+      90,
+      95
+    ],
+    "risk_grade_percentiles": [
+      50,
+      75,
+      90,
+      95
+    ],
+    "spatial_block_degrees": 0.015,
+    "spatial_folds": 5,
+    "validation_fold": 0,
+    "evaluation_folds": [
+      0
+    ],
+    "run_full_cv": false,
+    "run_feature_ablations": true,
+    "run_water_feature_ablations": false,
+    "run_drainage_ablation": true,
+    "run_alpha_ablation": false,
+    "run_hotspot_eval": false,
+    "hotspot_eval_in_cv": false,
+    "generate_map_outputs": false,
+    "run_buffer_sensitivity": false,
+    "water_distance_pixels": 256,
+    "drainage_infra_enabled": true,
+    "drainage_infra_radius_m": 500,
+    "drainage_infra_min_active_points": 500,
+    "lid_preconsult_zip": "/Users/cho/alpha_earth/seoul_flood/source/SP_BNLC_AS.zip",
+    "rainwater_use_zip": "/Users/cho/alpha_earth/seoul_flood/source/SP_LGRC_AS.zip",
+    "risk_grade_palette": [
+      "#2b83ba",
+      "#abdda4",
+      "#ffffbf",
+      "#fdae61",
+      "#d7191c"
+    ],
+    "risk_grade_names": [
+      "Very low",
+      "Low",
+      "Moderate",
+      "High",
+      "Very high"
+    ]
+  },
+  "data": {
+    "reference_geojson": "/Users/cho/alpha_earth/seoul_flood/source/seoul_flood_reference_points.geojson",
+    "reference_points_total": 300,
+    "reference_points_in_analysis_boundary": 257,
+    "reference_points_excluded": 43,
+    "positive_fold_histogram": {
+      "0": 31,
+      "1": 66,
+      "2": 50,
+      "3": 60,
+      "4": 50
+    },
+    "selected_train_positive_count": 226,
+    "selected_validation_positive_count": 31,
+    "drainage_infra": [
+      {
+        "dataset": "lid_preconsult",
+        "path": "/Users/cho/alpha_earth/seoul_flood/source/SP_BNLC_AS.zip",
+        "exists": true,
+        "raw_records": 6037,
+        "active_points": 5957,
+        "used": true,
+        "reason": null,
+        "points_in_analysis_boundary": 5075,
+        "band": "lid_preconsult_density",
+        "density_radius_m": 500,
+        "density_p95": 1.0
+      },
+      {
+        "dataset": "rainwater_use",
+        "path": "/Users/cho/alpha_earth/seoul_flood/source/SP_LGRC_AS.zip",
+        "exists": true,
+        "raw_records": 1265,
+        "active_points": 1227,
+        "used": true,
+        "reason": null,
+        "points_in_analysis_boundary": 1013,
+        "band": "rainwater_use_density",
+        "density_radius_m": 500,
+        "density_p95": 1.0
+      }
+    ]
+  },
+  "selected_model": {
+    "name": "Hybrid-basic",
+    "bands": [
+      "slope",
+      "hnd",
+      "log_upa",
+      "water_occ",
+      "built",
+      "lowland",
+      "alpha_score"
+    ],
+    "validation_fold": 0,
+    "selected_fold_accuracy": 0.8175,
+    "selected_fold_kappa": 0.635,
+    "probability_stats": null,
+    "hotspot_threshold": null,
+    "hotspot_area": null
+  },
+  "validation": {
+    "summary": {
+      "accuracy_mean": 0.8175,
+      "accuracy_std": 0,
+      "kappa_mean": 0.635,
+      "kappa_std": 0
+    },
+    "fold_results": [
+      {
+        "model": "Hybrid-basic",
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            191,
+            9
+          ],
+          [
+            4,
+            196
+          ]
+        ],
+        "valid_confusion": [
+          [
+            162,
+            38
+          ],
+          [
+            35,
+            165
+          ]
+        ],
+        "valid_accuracy": 0.8175,
+        "valid_kappa": 0.635
+      },
+      {
+        "model": "Hybrid-plus-drainage-infra",
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            188,
+            12
+          ],
+          [
+            4,
+            196
+          ]
+        ],
+        "valid_confusion": [
+          [
+            156,
+            44
+          ],
+          [
+            30,
+            170
+          ]
+        ],
+        "valid_accuracy": 0.815,
+        "valid_kappa": 0.6299999999999999
+      }
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "log_upa",
+      "importance_mean": 0.2024341071964909,
+      "importance_std": 0
+    },
+    {
+      "feature": "built",
+      "importance_mean": 0.19645642328962845,
+      "importance_std": 0
+    },
+    {
+      "feature": "slope",
+      "importance_mean": 0.16356681196946876,
+      "importance_std": 0
+    },
+    {
+      "feature": "alpha_score",
+      "importance_mean": 0.15446042369365295,
+      "importance_std": 0
+    },
+    {
+      "feature": "lowland",
+      "importance_mean": 0.1488260435497421,
+      "importance_std": 0
+    },
+    {
+      "feature": "hnd",
+      "importance_mean": 0.13425619030101688,
+      "importance_std": 0
+    },
+    {
+      "feature": "water_occ",
+      "importance_mean": 0.0,
+      "importance_std": 0
+    }
+  ],
+  "topk": {
+    "cv_summary": [],
+    "selected_fold": []
+  },
+  "risk_grade": {
+    "thresholds": {},
+    "area_summary": [],
+    "point_summary": [],
+    "cumulative_point_summary": [],
+    "legend": {}
+  },
+  "alpha_ablation": null,
+  "feature_ablations": {
+    "no_water_occ": null,
+    "water_distance": null,
+    "drainage_infra": {
+      "accuracy_mean": 0.815,
+      "accuracy_std": 0,
+      "kappa_mean": 0.6299999999999999,
+      "kappa_std": 0
+    }
+  },
+  "buffer_sensitivity": [],
+  "outputs": {
+    "html": "/Users/cho/alpha_earth/seoul_flood/drainage_screening_map.html",
+    "output_dir": "/Users/cho/alpha_earth/seoul_flood/outputs/drainage_screening",
+    "metrics_json": "/Users/cho/alpha_earth/seoul_flood/outputs/drainage_screening/metrics.json",
+    "cv_results_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/drainage_screening/cv_results.csv",
+    "feature_importance_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/drainage_screening/feature_importance.csv",
+    "topk_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/drainage_screening/topk_summary.csv",
+    "selected_fold_topk_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/drainage_screening/selected_fold_topk.csv",
+    "risk_grade_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/drainage_screening/risk_grade_summary.csv",
+    "risk_grade_points_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/drainage_screening/risk_grade_points.csv",
+    "cumulative_risk_grade_points_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/drainage_screening/cumulative_risk_grade_points.csv"
+  }
+}
