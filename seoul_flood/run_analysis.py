@@ -5,10 +5,12 @@ import os
 import ee
 
 
+# 분석 스크립트 기준 경로를 고정해, 어디서 실행해도 입력/출력 파일을 안정적으로 찾는다.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
 
 
+# .env 파일을 읽어 Earth Engine 프로젝트 ID와 분석 설정을 환경변수로 주입한다.
 def load_env_file(path):
     if not os.path.exists(path):
         return
@@ -34,6 +36,7 @@ for env_path in [
     load_env_file(env_path)
 
 
+# 입력 파일은 현재 실행 위치, 스크립트 폴더, source 폴더 순서로 탐색한다.
 def resolve_input_path(path):
     if os.path.isabs(path):
         return path
@@ -55,6 +58,7 @@ def resolve_output_path(path):
     return os.path.join(SCRIPT_DIR, path)
 
 
+# Earth Engine 객체나 tuple처럼 JSON 직렬화가 어려운 값을 저장 가능한 형태로 정리한다.
 def write_json(path, payload):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -88,6 +92,7 @@ def write_csv(path, rows):
             )
 
 
+# 실험 결과 저장 전에 Python 기본 타입으로 변환한다.
 def to_json_safe(value):
     if isinstance(value, dict):
         return {str(key): to_json_safe(item) for key, item in value.items()}
@@ -110,6 +115,7 @@ def parse_number(value):
         return 0.0
 
 
+# 공개데이터의 한국어 자치구명을 geoBoundaries ADM2의 영어 shapeName과 연결한다.
 SEOUL_GU_TO_ADM2_SHAPE = {
     "종로구": "Jongno-gu",
     "중구": "Jung-gu [Central District]",
@@ -141,6 +147,7 @@ SEOUL_GU_ORDER = list(SEOUL_GU_TO_ADM2_SHAPE)
 SEOUL_GU_NAMES = set(SEOUL_GU_TO_ADM2_SHAPE)
 
 
+# CSV 주소/관리기관명에서 서울 자치구명을 표준 형태로 추출한다.
 def normalize_seoul_gu_name(value):
     name = str(value or "").strip()
     if not name:
@@ -173,6 +180,7 @@ def read_csv_with_fallback(path, encodings=("utf-8-sig", "cp949")):
     raise last_error
 
 
+# 구별 원자료를 0~1 범위로 정규화해 서로 다른 단위의 인프라 지표를 모델 feature로 쓸 수 있게 한다.
 def normalize_gu_stats(raw_stats_by_gu, metric_names):
     max_by_metric = {
         metric: max(
@@ -192,6 +200,7 @@ def normalize_gu_stats(raw_stats_by_gu, metric_names):
     return normalized, max_by_metric
 
 
+# 배수펌프장 원자료를 자치구별 펌프장 수/용량/유역/유수지 통계로 요약한다.
 def load_pump_station_gu_stats(csv_path, min_districts=5):
     summary = {
         "dataset": "pump_station_gu_stats",
@@ -216,6 +225,7 @@ def load_pump_station_gu_stats(csv_path, min_districts=5):
 
         address = (row.get("상세주소") or row.get("주소") or "").strip()
         key = (gu_name, (row.get("시설물명") or "").strip(), address)
+        # 같은 펌프장이 여러 행으로 반복될 수 있어 시설명/주소 단위로 중복을 묶는다.
         station_stats = unique_stations.setdefault(
             key,
             {
@@ -277,6 +287,7 @@ def load_pump_station_gu_stats(csv_path, min_districts=5):
     return normalized_stats, summary
 
 
+# 하수관로 수위 센서 자료를 자치구별 센서 수 feature로 요약한다.
 def load_sewer_sensor_gu_stats(summary_csv_path, raw_csv_path, min_districts=5):
     summary = {
         "dataset": "sewer_level_sensor_gu_stats",
@@ -344,6 +355,7 @@ def load_sewer_sensor_gu_stats(summary_csv_path, raw_csv_path, min_districts=5):
     return normalized_stats, summary
 
 
+# 분석 설정: 30m sample scale, 5개 공간 fold, 양성/음성 sample 수와 buffer 거리를 정의한다.
 PROJECT_ID = os.environ.get("EE_PROJECT_ID")
 if not PROJECT_ID:
     raise ValueError("EE_PROJECT_ID is missing. Set it in .env or your shell.")
@@ -374,9 +386,12 @@ METRICS_JSON = os.path.join(OUTPUT_DIR, "metrics.json")
 CV_RESULTS_CSV = os.path.join(OUTPUT_DIR, "cv_results.csv")
 FEATURE_IMPORTANCE_CSV = os.path.join(OUTPUT_DIR, "feature_importance.csv")
 
+# Earth Engine 서버 계산을 시작하기 위해 프로젝트를 초기화한다.
 ee.Initialize(project=PROJECT_ID)
 
 
+# 경위도 기반 큰 공간 블록을 만들고, 각 블록을 5개 fold 중 하나로 배정한다.
+# 랜덤 분할보다 공간적으로 가까운 sample이 train/validation에 섞이는 문제를 줄이기 위한 장치다.
 def add_spatial_fold(fc):
     def _add_fold(feature):
         coords = feature.geometry().coordinates()
@@ -395,6 +410,7 @@ def add_spatial_fold(fc):
     return fc.map(_add_fold)
 
 
+# 모든 입력 raster와 sample을 서울 행정경계 안으로 제한한다.
 def find_seoul_boundary():
     adm1 = ee.FeatureCollection("WM/geoLab/geoBoundaries/600/ADM1")
     seoul_fc = (
@@ -415,6 +431,7 @@ def find_seoul_boundary():
 seoul_fc, seoul = find_seoul_boundary()
 
 
+# 침수흔적도 기반 기준점을 label=1 양성 target으로 읽고, 서울 경계 안의 점만 분석에 사용한다.
 def load_positive_points():
     with open(REFERENCE_GEOJSON, "r", encoding="utf-8") as f:
         geojson = json.load(f)
@@ -442,6 +459,7 @@ positive_points = positive_data["points"]
 positive_geom = positive_points.geometry()
 
 
+# 서울 전체 raster 픽셀에도 같은 fold 규칙을 적용해 train/validation 영역 마스크를 만들 수 있게 한다.
 def make_spatial_fold_image():
     lonlat = ee.Image.pixelLonLat()
     block_x = lonlat.select("longitude").add(180).divide(SPATIAL_BLOCK_DEGREES).floor()
@@ -458,6 +476,8 @@ def make_spatial_fold_image():
 spatial_fold = make_spatial_fold_image()
 
 
+# 자치구 단위 통계값을 ADM2 polygon에 붙인 뒤 raster band로 변환한다.
+# 같은 자치구 안에서는 같은 값이므로, 세밀한 시설 영향권이 아니라 구 단위 배경 feature다.
 def make_gu_stat_feature_images(stats_by_gu, dataset_name, dem_projection):
     band_names = sorted(
         {band for gu_stats in stats_by_gu.values() for band in gu_stats}
@@ -514,6 +534,8 @@ def make_gu_stat_feature_images(stats_by_gu, dataset_name, dem_projection):
     return images, band_names, summary
 
 
+# 모델이 사용할 정적 feature 이미지를 만든다.
+# 지형/수문/토지피복 feature와 선택적으로 자치구 단위 배수 인프라 feature를 합친다.
 def build_static_features():
     dem = ee.Image("USGS/SRTMGL1_003").clip(seoul)
     slope = ee.Terrain.slope(dem).rename("slope")
@@ -539,6 +561,7 @@ def build_static_features():
     built = dynamic_world.select("built").rename("built")
     dw_water = dynamic_world.select("water").rename("dw_water")
 
+    # 서울 내부 고도 범위에서 상대적으로 낮은 정도를 lowland feature로 만든다.
     dem_stats = dem.reduceRegion(
         reducer=ee.Reducer.minMax(),
         geometry=seoul,
@@ -558,6 +581,7 @@ def build_static_features():
     drainage_summaries = []
     drainage_images = []
     drainage_bands = []
+    # 배수펌프장과 하수관로 센서 통계가 충분히 있으면 구 단위 raster feature로 추가한다.
     for stats_by_gu, source_summary in [
         load_pump_station_gu_stats(PUMP_STATION_CSV),
         load_sewer_sensor_gu_stats(SEWER_SENSOR_GU_STATS_CSV, SEWER_LEVEL_SENSOR_CSV),
@@ -591,6 +615,8 @@ def build_static_features():
 static_features = build_static_features()
 
 
+# AlphaEarth/Satellite Embedding annual image를 서울 영역으로 가져온다.
+# 원본 64차원 embedding은 이후 alpha_score 1개 feature로 축약된다.
 def load_alphaearth():
     collection = (
         ee.ImageCollection("GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL")
@@ -608,6 +634,8 @@ def load_alphaearth():
 alpha_image, alpha_valid, alpha_bands, alpha_tile_count = load_alphaearth()
 
 
+# 음성 후보 영역: 서울 안에서 물 영역과 침수 기준점 주변 buffer를 제외한 곳이다.
+# 침수점 근처를 음성으로 잘못 뽑는 label noise를 줄이기 위해 negative buffer를 둔다.
 def make_negative_mask(negative_buffer_m):
     positive_exclusion = ee.Image.constant(0).byte().paint(
         positive_geom.buffer(negative_buffer_m),
@@ -623,6 +651,8 @@ def make_negative_mask(negative_buffer_m):
     )
 
 
+# 학습용 침수 기준점의 평균 AlphaEarth embedding과 각 위치 embedding 간 거리를 유사도 점수로 변환한다.
+# validation fold 기준점은 평균 계산에 넣지 않아 데이터 누수를 줄인다.
 def make_alpha_score(reference_fc):
     reference_geom = reference_fc.geometry()
     reference_mean = ee.Dictionary(
@@ -667,6 +697,7 @@ def make_alpha_score(reference_fc):
 fold_cache = {}
 
 
+# 한 validation fold에 필요한 feature image, 양성 mask, train/validation 영역 mask를 준비한다.
 def build_fold_inputs(validation_fold):
     if validation_fold in fold_cache:
         return fold_cache[validation_fold]
@@ -681,6 +712,7 @@ def build_fold_inputs(validation_fold):
         "valid_positive": valid_positive,
         "train_area_mask": spatial_fold.neq(validation_fold),
         "valid_area_mask": spatial_fold.eq(validation_fold),
+        # 침수 기준점 하나만 쓰지 않고 주변 60m를 양성 sample 후보 영역으로 확장한다.
         "positive_train_mask": ee.Image.constant(0).byte().paint(
             train_positive.map(lambda f: f.buffer(POSITIVE_BUFFER_M)),
             1,
@@ -694,6 +726,7 @@ def build_fold_inputs(validation_fold):
     return fold_inputs
 
 
+# Random Forest 입력 feature 목록이다. AlphaEarth는 원본 64개 band가 아니라 alpha_score 1개로 들어간다.
 INPUT_BANDS = (
     static_features["base_bands"]
     + ["alpha_score"]
@@ -701,6 +734,8 @@ INPUT_BANDS = (
 )
 
 
+# 지정된 train 또는 validation 영역에서 양성/음성 sample을 균형 있게 추출한다.
+# ANALYSIS_SCALE 기본값 30m가 실제 sample 및 feature 추출 스케일이다.
 def sample_split(feature_image, input_bands, positive_mask, negative_mask, area_mask, seed):
     split_positive = positive_mask.updateMask(area_mask)
     split_negative = negative_mask.updateMask(area_mask)
@@ -729,6 +764,7 @@ def sample_split(feature_image, input_bands, positive_mask, negative_mask, area_
     )
 
 
+# Earth Engine의 Random Forest를 확률 출력 모드로 학습한다.
 def train_rf(train_fc, input_bands):
     return (
         ee.Classifier.smileRandomForest(
@@ -743,6 +779,7 @@ def train_rf(train_fc, input_bands):
     )
 
 
+# validation sample에 모델을 적용하고 threshold 0.5 기준 혼동행렬을 만든다.
 def evaluate_fc(fc, classifier):
     evaluated = fc.classify(classifier, "probability").map(
         lambda f: f.set("predicted", ee.Number(f.get("probability")).gte(0.5).int())
@@ -750,10 +787,12 @@ def evaluate_fc(fc, classifier):
     return evaluated.errorMatrix("label", "predicted")
 
 
+# accuracy만으로는 침수 탐지 성능을 설명하기 부족해 여러 분류 지표를 직접 계산한다.
 def safe_divide(numerator, denominator):
     return numerator / denominator if denominator else None
 
 
+# score 순위 기반 ROC-AUC를 계산한다.
 def auc_roc_from_scores(labels, scores):
     positive_count = sum(labels)
     negative_count = len(labels) - positive_count
@@ -776,6 +815,7 @@ def auc_roc_from_scores(labels, scores):
     ) / (positive_count * negative_count)
 
 
+# 양성 탐지 문제에서 중요한 PR-AUC/average precision을 계산한다.
 def average_precision_from_scores(labels, scores):
     positive_count = sum(labels)
     if positive_count == 0:
@@ -793,6 +833,7 @@ def average_precision_from_scores(labels, scores):
     return sum(precision_at_positive) / positive_count
 
 
+# threshold 0.5 기준의 confusion metric과 threshold-free metric을 함께 반환한다.
 def binary_metrics(labels, scores, threshold=0.5):
     predictions = [1 if score >= threshold else 0 for score in scores]
     tp = sum(1 for y, p in zip(labels, predictions) if y == 1 and p == 1)
@@ -837,6 +878,7 @@ def binary_metrics(labels, scores, threshold=0.5):
     }
 
 
+# Earth Engine FeatureCollection 예측 결과를 Python 리스트로 가져와 metric을 계산한다.
 def sample_metrics(sample_fc, classifier):
     evaluated = sample_fc.classify(classifier, "probability")
     features = evaluated.select(["label", "probability"]).getInfo()["features"]
@@ -845,6 +887,7 @@ def sample_metrics(sample_fc, classifier):
     return binary_metrics(labels, scores)
 
 
+# Random Forest가 어떤 feature를 많이 사용했는지 fold별 중요도를 가져온다.
 def classifier_importance(classifier, input_bands):
     explain_info = classifier.explain().getInfo()
     raw_importance = explain_info.get("importance", {})
@@ -857,6 +900,7 @@ def classifier_importance(classifier, input_bands):
     return importance, normalized
 
 
+# 하나의 validation fold에 대해 sample 추출, RF 학습, validation 평가, feature importance 계산을 수행한다.
 def run_fold(validation_fold):
     fold_inputs = build_fold_inputs(validation_fold)
     negative_mask = make_negative_mask(NEGATIVE_BUFFER_M)
@@ -908,6 +952,7 @@ def run_fold(validation_fold):
     return result
 
 
+# fold별 결과를 평균/표준편차로 요약하기 위한 작은 통계 유틸리티다.
 def mean(values):
     return sum(values) / max(len(values), 1)
 
@@ -919,6 +964,7 @@ def sample_std(values):
     return (sum((value - avg) ** 2 for value in values) / (len(values) - 1)) ** 0.5
 
 
+# 최종 validation summary에 포함할 metric 목록이다.
 METRIC_KEYS = [
     "accuracy",
     "kappa",
@@ -936,6 +982,7 @@ METRIC_KEYS = [
 ]
 
 
+# 5개 fold의 validation 결과를 평균과 표준편차로 요약한다.
 def summarize_cv(rows):
     values_by_metric = {
         "accuracy": [row["valid_accuracy"] for row in rows],
@@ -958,6 +1005,7 @@ def summarize_cv(rows):
     return summary
 
 
+# fold별 normalized feature importance를 평균/표준편차로 요약한다.
 def summarize_importance(rows):
     summary = []
     for band in INPUT_BANDS:
@@ -975,6 +1023,7 @@ def summarize_importance(rows):
     return sorted(summary, key=lambda row: row["importance_mean"], reverse=True)
 
 
+# CSV/JSON 저장에 필요한 fold 결과만 남겨 출력 파일을 간결하게 만든다.
 def sanitize_fold_result(row):
     return {
         "fold": row["fold"],
@@ -991,6 +1040,7 @@ def sanitize_fold_result(row):
     }
 
 
+# 전체 실행 진입점: 5-fold 공간 검증을 돌리고 metric/importance/output 경로를 저장한다.
 def main():
     print("Analysis model bands:", INPUT_BANDS)
     print("Positive fold histogram:", positive_data["fold_histogram"])

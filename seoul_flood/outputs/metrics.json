@@ -24,19 +24,29 @@
     "spatial_folds": 5,
     "validation_fold": 0,
     "evaluation_folds": [
-      0,
-      1,
-      2,
-      3,
-      4
+      0
     ],
-    "run_full_cv": true,
+    "run_full_cv": false,
     "run_feature_ablations": false,
-    "run_alpha_ablation": true,
+    "run_water_feature_ablations": false,
+    "run_drainage_ablation": false,
+    "run_alpha_ablation": false,
     "run_hotspot_eval": true,
-    "hotspot_eval_in_cv": true,
+    "hotspot_eval_in_cv": false,
+    "generate_map_outputs": true,
     "run_buffer_sensitivity": false,
     "water_distance_pixels": 256,
+    "drainage_feature_mode": "gu_stats",
+    "drainage_infra_enabled": false,
+    "drainage_infra_radius_m": 500,
+    "drainage_infra_min_active_points": 500,
+    "drainage_gu_stats_enabled": true,
+    "drainage_gu_stats_min_districts": 5,
+    "lid_preconsult_zip": "/Users/cho/alpha_earth/seoul_flood/source/SP_BNLC_AS.zip",
+    "rainwater_use_zip": "/Users/cho/alpha_earth/seoul_flood/source/SP_LGRC_AS.zip",
+    "pump_station_csv": "/Users/cho/alpha_earth/seoul_flood/source/seoul_pump_stations.csv",
+    "sewer_sensor_gu_stats_csv": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_sensor_gu_stats.csv",
+    "sewer_level_sensor_csv": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_202605.csv",
     "risk_grade_palette": [
       "#2b83ba",
       "#abdda4",
@@ -65,10 +75,312 @@
       "4": 50
     },
     "selected_train_positive_count": 226,
-    "selected_validation_positive_count": 31
+    "selected_validation_positive_count": 31,
+    "drainage_infra": [
+      {
+        "dataset": "drainage_infra",
+        "used": false,
+        "reason": "disabled"
+      },
+      {
+        "dataset": "pump_station_gu_stats",
+        "path": "/Users/cho/alpha_earth/seoul_flood/source/seoul_pump_stations.csv",
+        "exists": true,
+        "raw_records": 96,
+        "unique_stations": 57,
+        "district_count": 16,
+        "used": true,
+        "reason": null,
+        "encoding": "cp949",
+        "skipped_rows": 5,
+        "raw_stats_by_gu": {
+          "금천구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 23.5,
+            "pump_catchment_area_sum": 0.8,
+            "pump_reservoir_capacity_sum": 7647.0
+          },
+          "영등포구": {
+            "pump_station_count": 4.0,
+            "pump_capacity_sum": 115.70000000000002,
+            "pump_catchment_area_sum": 5.0,
+            "pump_reservoir_capacity_sum": 38050.0
+          },
+          "관악구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 16.7,
+            "pump_catchment_area_sum": 1.0,
+            "pump_reservoir_capacity_sum": 8400.0
+          },
+          "구로구": {
+            "pump_station_count": 6.0,
+            "pump_capacity_sum": 332.5,
+            "pump_catchment_area_sum": 57.0,
+            "pump_reservoir_capacity_sum": 192844.0
+          },
+          "강동구": {
+            "pump_station_count": 3.0,
+            "pump_capacity_sum": 240.2,
+            "pump_catchment_area_sum": 21.6,
+            "pump_reservoir_capacity_sum": 367000.0
+          },
+          "송파구": {
+            "pump_station_count": 6.0,
+            "pump_capacity_sum": 243.7,
+            "pump_catchment_area_sum": 32.9,
+            "pump_reservoir_capacity_sum": 1998600.0
+          },
+          "강남구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 52.0,
+            "pump_catchment_area_sum": 5.8,
+            "pump_reservoir_capacity_sum": 216000.0
+          },
+          "서초구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 11.7,
+            "pump_catchment_area_sum": 0.6,
+            "pump_reservoir_capacity_sum": 3520.0
+          },
+          "마포구": {
+            "pump_station_count": 3.0,
+            "pump_capacity_sum": 34.8,
+            "pump_catchment_area_sum": 1.5,
+            "pump_reservoir_capacity_sum": 8350.0
+          },
+          "은평구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 5.8,
+            "pump_catchment_area_sum": 0.2,
+            "pump_reservoir_capacity_sum": 1500.0
+          },
+          "성동구": {
+            "pump_station_count": 9.0,
+            "pump_capacity_sum": 13408.6,
+            "pump_catchment_area_sum": 17.6,
+            "pump_reservoir_capacity_sum": 324803.0
+          },
+          "동대문구": {
+            "pump_station_count": 13.0,
+            "pump_capacity_sum": 7231.0,
+            "pump_catchment_area_sum": 10.6,
+            "pump_reservoir_capacity_sum": 123832.0
+          },
+          "중랑구": {
+            "pump_station_count": 4.0,
+            "pump_capacity_sum": 6087.7,
+            "pump_catchment_area_sum": 7.7,
+            "pump_reservoir_capacity_sum": 121360.0
+          },
+          "성북구": {
+            "pump_station_count": 2.0,
+            "pump_capacity_sum": 13.7,
+            "pump_catchment_area_sum": 0.6,
+            "pump_reservoir_capacity_sum": 4400.0
+          },
+          "노원구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 9.9,
+            "pump_catchment_area_sum": 0.7,
+            "pump_reservoir_capacity_sum": 4500.0
+          },
+          "광진구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 2330.0,
+            "pump_catchment_area_sum": 2.0,
+            "pump_reservoir_capacity_sum": 7175.0
+          }
+        },
+        "max_by_metric": {
+          "pump_station_count": 13.0,
+          "pump_capacity_sum": 13408.6,
+          "pump_catchment_area_sum": 57.0,
+          "pump_reservoir_capacity_sum": 1998600.0
+        },
+        "image_summary": {
+          "dataset": "pump_station_gu_stats",
+          "used": true,
+          "district_count": 16,
+          "band_names": [
+            "pump_capacity_sum_norm",
+            "pump_catchment_area_sum_norm",
+            "pump_reservoir_capacity_sum_norm",
+            "pump_station_count_norm"
+          ],
+          "matched_adm2_count": 16,
+          "reason": null,
+          "mapped_districts": [
+            "강남구",
+            "강동구",
+            "관악구",
+            "광진구",
+            "구로구",
+            "금천구",
+            "노원구",
+            "동대문구",
+            "마포구",
+            "서초구",
+            "성동구",
+            "성북구",
+            "송파구",
+            "영등포구",
+            "은평구",
+            "중랑구"
+          ],
+          "unmapped_districts": []
+        }
+      },
+      {
+        "dataset": "sewer_level_sensor_gu_stats",
+        "summary_path": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_sensor_gu_stats.csv",
+        "raw_path": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_202605.csv",
+        "summary_exists": true,
+        "raw_exists": true,
+        "district_count": 25,
+        "used": true,
+        "reason": null,
+        "encoding": "utf-8-sig",
+        "source": "summary_csv",
+        "raw_stats_by_gu": {
+          "강남구": {
+            "sewer_sensor_count": 116.0
+          },
+          "강동구": {
+            "sewer_sensor_count": 24.0
+          },
+          "강북구": {
+            "sewer_sensor_count": 3.0
+          },
+          "강서구": {
+            "sewer_sensor_count": 20.0
+          },
+          "관악구": {
+            "sewer_sensor_count": 41.0
+          },
+          "광진구": {
+            "sewer_sensor_count": 36.0
+          },
+          "구로구": {
+            "sewer_sensor_count": 35.0
+          },
+          "금천구": {
+            "sewer_sensor_count": 20.0
+          },
+          "노원구": {
+            "sewer_sensor_count": 11.0
+          },
+          "도봉구": {
+            "sewer_sensor_count": 10.0
+          },
+          "동대문구": {
+            "sewer_sensor_count": 56.0
+          },
+          "동작구": {
+            "sewer_sensor_count": 46.0
+          },
+          "마포구": {
+            "sewer_sensor_count": 20.0
+          },
+          "서대문구": {
+            "sewer_sensor_count": 15.0
+          },
+          "서초구": {
+            "sewer_sensor_count": 65.0
+          },
+          "성동구": {
+            "sewer_sensor_count": 11.0
+          },
+          "성북구": {
+            "sewer_sensor_count": 7.0
+          },
+          "송파구": {
+            "sewer_sensor_count": 22.0
+          },
+          "양천구": {
+            "sewer_sensor_count": 13.0
+          },
+          "영등포구": {
+            "sewer_sensor_count": 18.0
+          },
+          "용산구": {
+            "sewer_sensor_count": 9.0
+          },
+          "은평구": {
+            "sewer_sensor_count": 14.0
+          },
+          "종로구": {
+            "sewer_sensor_count": 5.0
+          },
+          "중구": {
+            "sewer_sensor_count": 6.0
+          },
+          "중랑구": {
+            "sewer_sensor_count": 13.0
+          }
+        },
+        "max_by_metric": {
+          "sewer_sensor_count": 116.0
+        },
+        "image_summary": {
+          "dataset": "sewer_level_sensor_gu_stats",
+          "used": true,
+          "district_count": 25,
+          "band_names": [
+            "sewer_sensor_count_norm"
+          ],
+          "matched_adm2_count": 25,
+          "reason": null,
+          "mapped_districts": [
+            "강남구",
+            "강동구",
+            "강북구",
+            "강서구",
+            "관악구",
+            "광진구",
+            "구로구",
+            "금천구",
+            "노원구",
+            "도봉구",
+            "동대문구",
+            "동작구",
+            "마포구",
+            "서대문구",
+            "서초구",
+            "성동구",
+            "성북구",
+            "송파구",
+            "양천구",
+            "영등포구",
+            "용산구",
+            "은평구",
+            "종로구",
+            "중구",
+            "중랑구"
+          ],
+          "unmapped_districts": []
+        }
+      }
+    ],
+    "drainage_feature_groups": {
+      "point_density": [],
+      "gu_stats": [
+        "pump_capacity_sum_norm",
+        "pump_catchment_area_sum_norm",
+        "pump_reservoir_capacity_sum_norm",
+        "pump_station_count_norm",
+        "sewer_sensor_count_norm"
+      ],
+      "all": [
+        "pump_capacity_sum_norm",
+        "pump_catchment_area_sum_norm",
+        "pump_reservoir_capacity_sum_norm",
+        "pump_station_count_norm",
+        "sewer_sensor_count_norm"
+      ]
+    }
   },
   "selected_model": {
-    "name": "Hybrid-basic",
+    "name": "Hybrid-plus-drainage-gu-stats",
     "bands": [
       "slope",
       "hnd",
@@ -76,27 +388,139 @@
       "water_occ",
       "built",
       "lowland",
-      "alpha_score"
+      "alpha_score",
+      "pump_capacity_sum_norm",
+      "pump_catchment_area_sum_norm",
+      "pump_reservoir_capacity_sum_norm",
+      "pump_station_count_norm",
+      "sewer_sensor_count_norm"
     ],
     "validation_fold": 0,
-    "selected_fold_accuracy": 0.8175,
-    "selected_fold_kappa": 0.635,
-    "probability_stats": {
-      "flood_prob_max": 0.9605255396221807,
-      "flood_prob_mean": 0.32815238645603756,
-      "flood_prob_min": 0.0270851245345634
+    "selected_fold_accuracy": 0.8525,
+    "selected_fold_kappa": 0.7050000000000001,
+    "selected_fold_metrics": {
+      "threshold": 0.5,
+      "sample_count": 400,
+      "positive_count": 200,
+      "negative_count": 200,
+      "true_positive": 184,
+      "true_negative": 157,
+      "false_positive": 43,
+      "false_negative": 16,
+      "accuracy": 0.8525,
+      "precision": 0.8105726872246696,
+      "recall": 0.92,
+      "sensitivity": 0.92,
+      "specificity": 0.785,
+      "f1": 0.8618266978922717,
+      "balanced_accuracy": 0.8525,
+      "negative_predictive_value": 0.9075144508670521,
+      "false_positive_rate": 0.21499999999999997,
+      "false_negative_rate": 0.07999999999999996,
+      "roc_auc": 0.92765,
+      "pr_auc": 0.9173428958065527,
+      "average_precision": 0.9173428958065527
     },
-    "hotspot_threshold": 0.8495524322518186,
+    "probability_stats": {
+      "flood_prob_max": 0.9533221289285391,
+      "flood_prob_mean": 0.2988874767590273,
+      "flood_prob_min": 0.030111467274165565
+    },
+    "hotspot_threshold": 0.7753794191864121,
     "hotspot_area": {
-      "area": 27.636559691342683
-    }
+      "area": 26.495318349391535
+    },
+    "feature_importance": [
+      {
+        "feature": "log_upa",
+        "importance_mean": 0.14135654724842578,
+        "importance_std": 0
+      },
+      {
+        "feature": "alpha_score",
+        "importance_mean": 0.1386319564630076,
+        "importance_std": 0
+      },
+      {
+        "feature": "lowland",
+        "importance_mean": 0.10856424956035632,
+        "importance_std": 0
+      },
+      {
+        "feature": "hnd",
+        "importance_mean": 0.10850596620310506,
+        "importance_std": 0
+      },
+      {
+        "feature": "slope",
+        "importance_mean": 0.10769273923132877,
+        "importance_std": 0
+      },
+      {
+        "feature": "built",
+        "importance_mean": 0.10249436819238707,
+        "importance_std": 0
+      },
+      {
+        "feature": "sewer_sensor_count_norm",
+        "importance_mean": 0.09691515135317101,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_capacity_sum_norm",
+        "importance_mean": 0.06492719301206139,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_reservoir_capacity_sum_norm",
+        "importance_mean": 0.05561150398551387,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_catchment_area_sum_norm",
+        "importance_mean": 0.04671855733941894,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_station_count_norm",
+        "importance_mean": 0.028581767411224125,
+        "importance_std": 0
+      },
+      {
+        "feature": "water_occ",
+        "importance_mean": 0.0,
+        "importance_std": 0
+      }
+    ]
   },
   "validation": {
     "summary": {
-      "accuracy_mean": 0.7775000000000001,
-      "accuracy_std": 0.036400549446402586,
-      "kappa_mean": 0.5549999999999999,
-      "kappa_std": 0.07280109889280519
+      "accuracy_mean": 0.8175,
+      "accuracy_std": 0,
+      "kappa_mean": 0.635,
+      "kappa_std": 0,
+      "roc_auc_mean": 0.8877,
+      "roc_auc_std": 0,
+      "pr_auc_mean": 0.8595410769393087,
+      "pr_auc_std": 0,
+      "average_precision_mean": 0.8595410769393087,
+      "average_precision_std": 0,
+      "precision_mean": 0.812807881773399,
+      "precision_std": 0,
+      "recall_mean": 0.825,
+      "recall_std": 0,
+      "specificity_mean": 0.81,
+      "specificity_std": 0,
+      "f1_mean": 0.8188585607940446,
+      "f1_std": 0,
+      "balanced_accuracy_mean": 0.8175,
+      "balanced_accuracy_std": 0,
+      "negative_predictive_value_mean": 0.8223350253807107,
+      "negative_predictive_value_std": 0,
+      "false_positive_rate_mean": 0.18999999999999995,
+      "false_positive_rate_std": 0,
+      "false_negative_rate_mean": 0.17500000000000004,
+      "false_negative_rate_std": 0
     },
     "fold_results": [
       {
@@ -138,415 +562,28 @@
         ],
         "valid_accuracy": 0.8175,
         "valid_kappa": 0.635,
-        "hotspot_point_recall": {
-          "top_20_percent": 0.7096774193548387,
-          "top_10_percent": 0.25806451612903225,
-          "top_5_percent": 0.16129032258064516
-        }
-      },
-      {
-        "model": "Hybrid-basic",
-        "fold": 1,
-        "positive_buffer_m": 60,
-        "negative_buffer_m": 300,
-        "train_positive_count": 191,
-        "valid_positive_count": 66,
-        "train_sample_count": 400,
-        "valid_sample_count": 400,
-        "train_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "valid_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "train_confusion": [
-          [
-            193,
-            7
-          ],
-          [
-            7,
-            193
-          ]
-        ],
-        "valid_confusion": [
-          [
-            149,
-            51
-          ],
-          [
-            56,
-            144
-          ]
-        ],
-        "valid_accuracy": 0.7325,
-        "valid_kappa": 0.4650000000000001,
-        "hotspot_point_recall": {
-          "top_20_percent": 0.6515151515151515,
-          "top_10_percent": 0.4090909090909091,
-          "top_5_percent": 0.21212121212121213
-        }
-      },
-      {
-        "model": "Hybrid-basic",
-        "fold": 2,
-        "positive_buffer_m": 60,
-        "negative_buffer_m": 300,
-        "train_positive_count": 207,
-        "valid_positive_count": 50,
-        "train_sample_count": 400,
-        "valid_sample_count": 400,
-        "train_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "valid_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "train_confusion": [
-          [
-            192,
-            8
-          ],
-          [
-            11,
-            189
-          ]
-        ],
-        "valid_confusion": [
-          [
-            150,
-            50
-          ],
-          [
-            25,
-            175
-          ]
-        ],
-        "valid_accuracy": 0.8125,
-        "valid_kappa": 0.625,
-        "hotspot_point_recall": {
-          "top_20_percent": 0.68,
-          "top_10_percent": 0.42,
-          "top_5_percent": 0.22
-        }
-      },
-      {
-        "model": "Hybrid-basic",
-        "fold": 3,
-        "positive_buffer_m": 60,
-        "negative_buffer_m": 300,
-        "train_positive_count": 197,
-        "valid_positive_count": 60,
-        "train_sample_count": 400,
-        "valid_sample_count": 400,
-        "train_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "valid_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "train_confusion": [
-          [
-            192,
-            8
-          ],
-          [
-            7,
-            193
-          ]
-        ],
-        "valid_confusion": [
-          [
-            161,
-            39
-          ],
-          [
-            56,
-            144
-          ]
-        ],
-        "valid_accuracy": 0.7625,
-        "valid_kappa": 0.5249999999999999,
-        "hotspot_point_recall": {
-          "top_20_percent": 0.6333333333333333,
-          "top_10_percent": 0.31666666666666665,
-          "top_5_percent": 0.21666666666666667
-        }
-      },
-      {
-        "model": "Hybrid-basic",
-        "fold": 4,
-        "positive_buffer_m": 60,
-        "negative_buffer_m": 300,
-        "train_positive_count": 207,
-        "valid_positive_count": 50,
-        "train_sample_count": 400,
-        "valid_sample_count": 400,
-        "train_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "valid_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "train_confusion": [
-          [
-            192,
-            8
-          ],
-          [
-            5,
-            195
-          ]
-        ],
-        "valid_confusion": [
-          [
-            146,
-            54
-          ],
-          [
-            41,
-            159
-          ]
-        ],
-        "valid_accuracy": 0.7625,
-        "valid_kappa": 0.5249999999999999,
-        "hotspot_point_recall": {
-          "top_20_percent": 0.7,
-          "top_10_percent": 0.48,
-          "top_5_percent": 0.34
-        }
-      },
-      {
-        "model": "Hybrid-no-alpha",
-        "fold": 0,
-        "positive_buffer_m": 60,
-        "negative_buffer_m": 300,
-        "train_positive_count": 226,
-        "valid_positive_count": 31,
-        "train_sample_count": 400,
-        "valid_sample_count": 400,
-        "train_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "valid_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "train_confusion": [
-          [
-            193,
-            7
-          ],
-          [
-            5,
-            195
-          ]
-        ],
-        "valid_confusion": [
-          [
-            142,
-            58
-          ],
-          [
-            14,
-            186
-          ]
-        ],
-        "valid_accuracy": 0.82,
-        "valid_kappa": 0.6399999999999999,
-        "hotspot_point_recall": {
-          "top_20_percent": 0.6451612903225806,
-          "top_10_percent": 0.3870967741935484,
-          "top_5_percent": 0.1935483870967742
-        }
-      },
-      {
-        "model": "Hybrid-no-alpha",
-        "fold": 1,
-        "positive_buffer_m": 60,
-        "negative_buffer_m": 300,
-        "train_positive_count": 191,
-        "valid_positive_count": 66,
-        "train_sample_count": 400,
-        "valid_sample_count": 400,
-        "train_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "valid_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "train_confusion": [
-          [
-            192,
-            8
-          ],
-          [
-            8,
-            192
-          ]
-        ],
-        "valid_confusion": [
-          [
-            147,
-            53
-          ],
-          [
-            72,
-            128
-          ]
-        ],
-        "valid_accuracy": 0.6875,
-        "valid_kappa": 0.375,
-        "hotspot_point_recall": {
-          "top_20_percent": 0.5303030303030303,
-          "top_10_percent": 0.3333333333333333,
-          "top_5_percent": 0.19696969696969696
-        }
-      },
-      {
-        "model": "Hybrid-no-alpha",
-        "fold": 2,
-        "positive_buffer_m": 60,
-        "negative_buffer_m": 300,
-        "train_positive_count": 207,
-        "valid_positive_count": 50,
-        "train_sample_count": 400,
-        "valid_sample_count": 400,
-        "train_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "valid_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "train_confusion": [
-          [
-            192,
-            8
-          ],
-          [
-            6,
-            194
-          ]
-        ],
-        "valid_confusion": [
-          [
-            140,
-            60
-          ],
-          [
-            34,
-            166
-          ]
-        ],
-        "valid_accuracy": 0.765,
-        "valid_kappa": 0.53,
-        "hotspot_point_recall": {
-          "top_20_percent": 0.4,
-          "top_10_percent": 0.22,
-          "top_5_percent": 0.14
-        }
-      },
-      {
-        "model": "Hybrid-no-alpha",
-        "fold": 3,
-        "positive_buffer_m": 60,
-        "negative_buffer_m": 300,
-        "train_positive_count": 197,
-        "valid_positive_count": 60,
-        "train_sample_count": 400,
-        "valid_sample_count": 400,
-        "train_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "valid_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "train_confusion": [
-          [
-            194,
-            6
-          ],
-          [
-            5,
-            195
-          ]
-        ],
-        "valid_confusion": [
-          [
-            141,
-            59
-          ],
-          [
-            67,
-            133
-          ]
-        ],
-        "valid_accuracy": 0.685,
-        "valid_kappa": 0.3700000000000001,
-        "hotspot_point_recall": {
-          "top_20_percent": 0.5166666666666667,
-          "top_10_percent": 0.45,
-          "top_5_percent": 0.18333333333333332
-        }
-      },
-      {
-        "model": "Hybrid-no-alpha",
-        "fold": 4,
-        "positive_buffer_m": 60,
-        "negative_buffer_m": 300,
-        "train_positive_count": 207,
-        "valid_positive_count": 50,
-        "train_sample_count": 400,
-        "valid_sample_count": 400,
-        "train_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "valid_label_histogram": {
-          "0": 200,
-          "1": 200
-        },
-        "train_confusion": [
-          [
-            191,
-            9
-          ],
-          [
-            8,
-            192
-          ]
-        ],
-        "valid_confusion": [
-          [
-            160,
-            40
-          ],
-          [
-            63,
-            137
-          ]
-        ],
-        "valid_accuracy": 0.7425,
-        "valid_kappa": 0.4850000000000001,
-        "hotspot_point_recall": {
-          "top_20_percent": 0.62,
-          "top_10_percent": 0.48,
-          "top_5_percent": 0.26
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 165,
+          "true_negative": 162,
+          "false_positive": 38,
+          "false_negative": 35,
+          "accuracy": 0.8175,
+          "precision": 0.812807881773399,
+          "recall": 0.825,
+          "sensitivity": 0.825,
+          "specificity": 0.81,
+          "f1": 0.8188585607940446,
+          "balanced_accuracy": 0.8175,
+          "negative_predictive_value": 0.8223350253807107,
+          "false_positive_rate": 0.18999999999999995,
+          "false_negative_rate": 0.17500000000000004,
+          "roc_auc": 0.8877,
+          "pr_auc": 0.8595410769393087,
+          "average_precision": 0.8595410769393087
         }
       }
     ]
@@ -554,173 +591,100 @@
   "feature_importance": [
     {
       "feature": "log_upa",
-      "importance_mean": 0.18809703009812218,
-      "importance_std": 0.0160487635545134
-    },
-    {
-      "feature": "alpha_score",
-      "importance_mean": 0.18148131274876106,
-      "importance_std": 0.015440260032353841
-    },
-    {
-      "feature": "slope",
-      "importance_mean": 0.168686808658202,
-      "importance_std": 0.011705301398892264
+      "importance_mean": 0.2024341071964909,
+      "importance_std": 0
     },
     {
       "feature": "built",
-      "importance_mean": 0.16546863442438084,
-      "importance_std": 0.018694700858563708
+      "importance_mean": 0.19645642328962845,
+      "importance_std": 0
     },
     {
-      "feature": "hnd",
-      "importance_mean": 0.1489391553563731,
-      "importance_std": 0.011299218317015186
+      "feature": "slope",
+      "importance_mean": 0.16356681196946876,
+      "importance_std": 0
+    },
+    {
+      "feature": "alpha_score",
+      "importance_mean": 0.15446042369365295,
+      "importance_std": 0
     },
     {
       "feature": "lowland",
-      "importance_mean": 0.14732031154125022,
-      "importance_std": 0.011853120831317138
+      "importance_mean": 0.1488260435497421,
+      "importance_std": 0
+    },
+    {
+      "feature": "hnd",
+      "importance_mean": 0.13425619030101688,
+      "importance_std": 0
     },
     {
       "feature": "water_occ",
-      "importance_mean": 6.747172910613234e-06,
-      "importance_std": 1.5087137284076303e-05
+      "importance_mean": 0.0,
+      "importance_std": 0
     }
   ],
   "topk": {
-    "cv_summary": [
-      {
-        "model": "Hybrid-basic",
-        "percentile": 80,
-        "top_percent": 20,
-        "evaluated_point_recall_mean": 0.6749051808406648,
-        "evaluated_point_recall_std": 0.032171911969969484,
-        "all_point_recall_mean": 0.6749051808406648,
-        "evaluated_point_lift_mean": 3.3473742048799826,
-        "hotspot_area_share_mean": 0.2016258984486127,
-        "hit_points_mean": 34.4,
-        "hotspot_area_km2_mean": 108.7468175503449
-      },
-      {
-        "model": "Hybrid-basic",
-        "percentile": 90,
-        "top_percent": 10,
-        "evaluated_point_recall_mean": 0.3767644183773216,
-        "evaluated_point_recall_std": 0.08842130595550574,
-        "all_point_recall_mean": 0.3767644183773216,
-        "evaluated_point_lift_mean": 3.7656162271791835,
-        "hotspot_area_share_mean": 0.10002627958533927,
-        "hit_points_mean": 19.8,
-        "hotspot_area_km2_mean": 53.94911893760999
-      },
-      {
-        "model": "Hybrid-basic",
-        "percentile": 95,
-        "top_percent": 5,
-        "evaluated_point_recall_mean": 0.2300156402737048,
-        "evaluated_point_recall_std": 0.0659894828396417,
-        "all_point_recall_mean": 0.2300156402737048,
-        "evaluated_point_lift_mean": 4.565152184642384,
-        "hotspot_area_share_mean": 0.05047804093489624,
-        "hit_points_mean": 12.0,
-        "hotspot_area_km2_mean": 27.225303644437513
-      },
-      {
-        "model": "Hybrid-no-alpha",
-        "percentile": 80,
-        "top_percent": 20,
-        "evaluated_point_recall_mean": 0.5424261974584554,
-        "evaluated_point_recall_std": 0.09704115167999784,
-        "all_point_recall_mean": 0.5424261974584554,
-        "evaluated_point_lift_mean": 2.6632492805962764,
-        "hotspot_area_share_mean": 0.20364682020844374,
-        "hit_points_mean": 27.4,
-        "hotspot_area_km2_mean": 109.83680059116878
-      },
-      {
-        "model": "Hybrid-no-alpha",
-        "percentile": 90,
-        "top_percent": 10,
-        "evaluated_point_recall_mean": 0.37408602150537634,
-        "evaluated_point_recall_std": 0.10314221525829959,
-        "all_point_recall_mean": 0.37408602150537634,
-        "evaluated_point_lift_mean": 3.6715315439994924,
-        "hotspot_area_share_mean": 0.10235964397282951,
-        "hit_points_mean": 19.2,
-        "hotspot_area_km2_mean": 55.20761773799869
-      },
-      {
-        "model": "Hybrid-no-alpha",
-        "percentile": 95,
-        "top_percent": 5,
-        "evaluated_point_recall_mean": 0.1947702834799609,
-        "evaluated_point_recall_std": 0.0429878882619467,
-        "all_point_recall_mean": 0.1947702834799609,
-        "evaluated_point_lift_mean": 3.8786799805664502,
-        "hotspot_area_share_mean": 0.050232833030558754,
-        "hit_points_mean": 10.0,
-        "hotspot_area_km2_mean": 27.09305089595596
-      }
-    ],
+    "cv_summary": [],
     "selected_fold": [
       {
-        "all_point_lift": 3.5108971728084266,
-        "all_point_recall": 0.7096774193548387,
-        "analysis_area_km2": 539.3494505769586,
-        "evaluated_point_lift": 3.5108971728084266,
-        "evaluated_point_recall": 0.7096774193548387,
+        "all_point_lift": 4.506452586158606,
+        "all_point_recall": 0.9032258064516129,
+        "analysis_area_km2": 539.3158622612019,
+        "evaluated_point_lift": 4.506452586158606,
+        "evaluated_point_recall": 0.9032258064516129,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
-        "hit_points": 22,
-        "hotspot_area_km2": 109.02174212915685,
-        "hotspot_area_share": 0.20213563212594907,
+        "hit_points": 28,
+        "hotspot_area_km2": 108.09478083031506,
+        "hotspot_area_share": 0.20042944848145872,
         "percentile": 80,
-        "point_recall": 0.7096774193548387,
+        "point_recall": 0.9032258064516129,
         "sample_coverage": 1,
-        "sampled_point_recall": 0.7096774193548387,
+        "sampled_point_recall": 0.9032258064516129,
         "sampled_positive_points": 31,
-        "threshold": 0.5840048263403015,
+        "threshold": 0.5136819196222123,
         "top_percent": 20,
         "valid_positive_points": 31
       },
       {
-        "all_point_lift": 2.5812347497202417,
-        "all_point_recall": 0.25806451612903225,
-        "analysis_area_km2": 539.3494505769586,
-        "evaluated_point_lift": 2.5812347497202417,
-        "evaluated_point_recall": 0.25806451612903225,
+        "all_point_lift": 4.779177665913038,
+        "all_point_recall": 0.4838709677419355,
+        "analysis_area_km2": 539.3158622612019,
+        "evaluated_point_lift": 4.779177665913038,
+        "evaluated_point_recall": 0.4838709677419355,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
-        "hit_points": 8,
-        "hotspot_area_km2": 53.922625597182716,
-        "hotspot_area_share": 0.09997715866679763,
+        "hit_points": 15,
+        "hotspot_area_km2": 54.60338711660956,
+        "hotspot_area_share": 0.10124565386909389,
         "percentile": 90,
-        "point_recall": 0.25806451612903225,
+        "point_recall": 0.4838709677419355,
         "sample_coverage": 1,
-        "sampled_point_recall": 0.25806451612903225,
+        "sampled_point_recall": 0.4838709677419355,
         "sampled_positive_points": 31,
-        "threshold": 0.7559018981165163,
+        "threshold": 0.6698896607803342,
         "top_percent": 10,
         "valid_positive_points": 31
       },
       {
-        "all_point_lift": 3.14770897097232,
-        "all_point_recall": 0.16129032258064516,
-        "analysis_area_km2": 539.3494505769586,
-        "evaluated_point_lift": 3.14770897097232,
-        "evaluated_point_recall": 0.16129032258064516,
+        "all_point_lift": 3.9397041356462443,
+        "all_point_recall": 0.1935483870967742,
+        "analysis_area_km2": 539.3158622612019,
+        "evaluated_point_lift": 3.9397041356462443,
+        "evaluated_point_recall": 0.1935483870967742,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
-        "hit_points": 5,
-        "hotspot_area_km2": 27.636559691342683,
-        "hotspot_area_share": 0.05124054481149283,
+        "hit_points": 6,
+        "hotspot_area_km2": 26.495318349391535,
+        "hotspot_area_share": 0.049127645232432085,
         "percentile": 95,
-        "point_recall": 0.16129032258064516,
+        "point_recall": 0.1935483870967742,
         "sample_coverage": 1,
-        "sampled_point_recall": 0.16129032258064516,
+        "sampled_point_recall": 0.1935483870967742,
         "sampled_positive_points": 31,
-        "threshold": 0.8495524322518186,
+        "threshold": 0.7753794191864121,
         "top_percent": 5,
         "valid_positive_points": 31
       }
@@ -728,56 +692,56 @@
   },
   "risk_grade": {
     "thresholds": {
-      "50": 0.2597598764046195,
-      "75": 0.5175963252815946,
-      "90": 0.7559018981165163,
-      "95": 0.8495524322518186
+      "50": 0.22856224866681052,
+      "75": 0.451173821618457,
+      "90": 0.6698896607803342,
+      "95": 0.7753794191864121
     },
     "area_summary": [
       {
         "grade": 1,
         "percentile_range": "p0-p50",
-        "probability_min": 0.0270851245345634,
-        "probability_max": 0.2597598764046195,
-        "area_km2": 274.2840163072097
+        "probability_min": 0.030111467274165565,
+        "probability_max": 0.22856224866681052,
+        "area_km2": 272.4466539376975
       },
       {
         "grade": 2,
         "percentile_range": "p50-p75",
-        "probability_min": 0.2597598764046195,
-        "probability_max": 0.5175963252815946,
-        "area_km2": 136.87526880214634
+        "probability_min": 0.22856224866681052,
+        "probability_max": 0.451173821618457,
+        "area_km2": 138.27156200130236
       },
       {
         "grade": 3,
         "percentile_range": "p75-p90",
-        "probability_min": 0.5175963252815946,
-        "probability_max": 0.7559018981165163,
-        "area_km2": 81.60329062225134
+        "probability_min": 0.451173821618457,
+        "probability_max": 0.6698896607803342,
+        "area_km2": 81.35138369822121
       },
       {
         "grade": 4,
         "percentile_range": "p90-p95",
-        "probability_min": 0.7559018981165163,
-        "probability_max": 0.8495524322518186,
-        "area_km2": 26.28606590583918
+        "probability_min": 0.6698896607803342,
+        "probability_max": 0.7753794191864121,
+        "area_km2": 28.108068767215382
       },
       {
         "grade": 5,
         "percentile_range": "p95-p100",
-        "probability_min": 0.8495524322518186,
-        "probability_max": 0.9605255396221807,
-        "area_km2": 27.636559691342683
+        "probability_min": 0.7753794191864121,
+        "probability_max": 0.9533221289285391,
+        "area_km2": 26.495318349391535
       }
     ],
     "point_summary": [
       {
         "grade": 1,
         "percentile_range": "p0-p50",
-        "probability_min": 0.0270851245345634,
-        "probability_max": 0.2597598764046195,
-        "area_km2": 274.2840163072097,
-        "area_share": 0.5017220433999802,
+        "probability_min": 0.030111467274165565,
+        "probability_max": 0.22856224866681052,
+        "area_km2": 272.4466539376975,
+        "area_share": 0.4983722637467411,
         "valid_positive_points": 31,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
@@ -789,121 +753,121 @@
       {
         "grade": 2,
         "percentile_range": "p50-p75",
-        "probability_min": 0.2597598764046195,
-        "probability_max": 0.5175963252815946,
-        "area_km2": 136.87526880214634,
-        "area_share": 0.25037310040486416,
+        "probability_min": 0.22856224866681052,
+        "probability_max": 0.451173821618457,
+        "area_km2": 138.27156200130236,
+        "area_share": 0.25293285995777093,
         "valid_positive_points": 31,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
-        "hit_points": 5,
-        "evaluated_point_share": 0.16129032258064516,
-        "all_point_share": 0.16129032258064516,
-        "lift": 0.6441998853704001
+        "hit_points": 3,
+        "evaluated_point_share": 0.0967741935483871,
+        "all_point_share": 0.0967741935483871,
+        "lift": 0.38260822877875295
       },
       {
         "grade": 3,
         "percentile_range": "p75-p90",
-        "probability_min": 0.5175963252815946,
-        "probability_max": 0.7559018981165163,
-        "area_km2": 81.60329062225134,
-        "area_share": 0.14926925115935818,
-        "valid_positive_points": 31,
-        "evaluated_positive_points": 31,
-        "excluded_positive_points": 0,
-        "hit_points": 11,
-        "evaluated_point_share": 0.3548387096774194,
-        "all_point_share": 0.3548387096774194,
-        "lift": 2.377172169897185
-      },
-      {
-        "grade": 4,
-        "percentile_range": "p90-p95",
-        "probability_min": 0.7559018981165163,
-        "probability_max": 0.8495524322518186,
-        "area_km2": 26.28606590583918,
-        "area_share": 0.0480826366653926,
+        "probability_min": 0.451173821618457,
+        "probability_max": 0.6698896607803342,
+        "area_km2": 81.35138369822121,
+        "area_share": 0.1488117863318798,
         "valid_positive_points": 31,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
         "hit_points": 10,
         "evaluated_point_share": 0.3225806451612903,
         "all_point_share": 0.3225806451612903,
-        "lift": 6.708880118329018
+        "lift": 2.16770897731092
+      },
+      {
+        "grade": 4,
+        "percentile_range": "p90-p95",
+        "probability_min": 0.6698896607803342,
+        "probability_max": 0.7753794191864121,
+        "area_km2": 28.108068767215382,
+        "area_share": 0.05141660453010953,
+        "valid_positive_points": 31,
+        "evaluated_positive_points": 31,
+        "excluded_positive_points": 0,
+        "hit_points": 7,
+        "evaluated_point_share": 0.22580645161290322,
+        "all_point_share": 0.22580645161290322,
+        "lift": 4.391702907582532
       },
       {
         "grade": 5,
         "percentile_range": "p95-p100",
-        "probability_min": 0.8495524322518186,
-        "probability_max": 0.9605255396221807,
-        "area_km2": 27.636559691342683,
-        "area_share": 0.050552968370404835,
+        "probability_min": 0.7753794191864121,
+        "probability_max": 0.9533221289285391,
+        "area_km2": 26.495318349391535,
+        "area_share": 0.04846648543349852,
         "valid_positive_points": 31,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
-        "hit_points": 5,
-        "evaluated_point_share": 0.16129032258064516,
-        "all_point_share": 0.16129032258064516,
-        "lift": 3.1905213042854506
+        "hit_points": 11,
+        "evaluated_point_share": 0.3548387096774194,
+        "all_point_share": 0.3548387096774194,
+        "lift": 7.321321249181521
       }
     ],
     "cumulative_point_summary": [
       {
         "grade_range": "5+",
         "min_grade": 5,
-        "area_km2": 27.636559691342683,
-        "area_share": 0.050552968370404835,
+        "area_km2": 26.495318349391535,
+        "area_share": 0.04846648543349852,
         "valid_positive_points": 31,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
-        "hit_points": 5,
-        "evaluated_point_recall": 0.16129032258064516,
-        "all_point_recall": 0.16129032258064516,
-        "lift": 3.1905213042854506
+        "hit_points": 11,
+        "evaluated_point_recall": 0.3548387096774194,
+        "all_point_recall": 0.3548387096774194,
+        "lift": 7.321321249181521
       },
       {
         "grade_range": "4+",
         "min_grade": 4,
-        "area_km2": 53.92262559718186,
-        "area_share": 0.09863560503579744,
+        "area_km2": 54.60338711660692,
+        "area_share": 0.09988308996360805,
         "valid_positive_points": 31,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
-        "hit_points": 15,
-        "evaluated_point_recall": 0.4838709677419355,
-        "all_point_recall": 0.4838709677419355,
-        "lift": 4.905642009965125
+        "hit_points": 18,
+        "evaluated_point_recall": 0.5806451612903226,
+        "all_point_recall": 0.5806451612903226,
+        "lift": 5.813247883118935
       },
       {
         "grade_range": "3+",
         "min_grade": 3,
-        "area_km2": 135.5259162194332,
-        "area_share": 0.24790485619515565,
+        "area_km2": 135.95477081482812,
+        "area_share": 0.24869487629548784,
         "valid_positive_points": 31,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
-        "hit_points": 26,
-        "evaluated_point_recall": 0.8387096774193549,
-        "all_point_recall": 0.8387096774193549,
-        "lift": 3.3831918030645833
+        "hit_points": 28,
+        "evaluated_point_recall": 0.9032258064516129,
+        "all_point_recall": 0.9032258064516129,
+        "lift": 3.6318633496029142
       },
       {
         "grade_range": "2+",
         "min_grade": 2,
-        "area_km2": 272.4011850215795,
-        "area_share": 0.4982779566000197,
+        "area_km2": 274.2263328161305,
+        "area_share": 0.5016277362532588,
         "valid_positive_points": 31,
         "evaluated_positive_points": 31,
         "excluded_positive_points": 0,
         "hit_points": 31,
         "evaluated_point_recall": 1.0,
         "all_point_recall": 1.0,
-        "lift": 2.0069119790557486
+        "lift": 1.9935101824097021
       },
       {
         "grade_range": "1+",
         "min_grade": 1,
-        "area_km2": 546.6852013287893,
+        "area_km2": 546.672986753828,
         "area_share": 1.0,
         "valid_positive_points": 31,
         "evaluated_positive_points": 31,
@@ -922,49 +886,7 @@
       "Grade 5: Very high (p95-p100)": "#d7191c"
     }
   },
-  "alpha_ablation": {
-    "validation_summary": {
-      "accuracy_mean": 0.74,
-      "accuracy_std": 0.05659615711335882,
-      "kappa_mean": 0.4800000000000001,
-      "kappa_std": 0.11319231422671765
-    },
-    "hotspot_summary": [
-      {
-        "percentile": 80,
-        "top_percent": 20,
-        "evaluated_point_recall_mean": 0.5424261974584554,
-        "evaluated_point_recall_std": 0.09704115167999784,
-        "all_point_recall_mean": 0.5424261974584554,
-        "evaluated_point_lift_mean": 2.6632492805962764,
-        "hotspot_area_share_mean": 0.20364682020844374,
-        "hit_points_mean": 27.4,
-        "hotspot_area_km2_mean": 109.83680059116878
-      },
-      {
-        "percentile": 90,
-        "top_percent": 10,
-        "evaluated_point_recall_mean": 0.37408602150537634,
-        "evaluated_point_recall_std": 0.10314221525829959,
-        "all_point_recall_mean": 0.37408602150537634,
-        "evaluated_point_lift_mean": 3.6715315439994924,
-        "hotspot_area_share_mean": 0.10235964397282951,
-        "hit_points_mean": 19.2,
-        "hotspot_area_km2_mean": 55.20761773799869
-      },
-      {
-        "percentile": 95,
-        "top_percent": 5,
-        "evaluated_point_recall_mean": 0.1947702834799609,
-        "evaluated_point_recall_std": 0.0429878882619467,
-        "all_point_recall_mean": 0.1947702834799609,
-        "evaluated_point_lift_mean": 3.8786799805664502,
-        "hotspot_area_share_mean": 0.050232833030558754,
-        "hit_points_mean": 10.0,
-        "hotspot_area_km2_mean": 27.09305089595596
-      }
-    ]
-  },
+  "alpha_ablation": null,
   "feature_ablations": null,
   "buffer_sensitivity": [],
   "outputs": {
