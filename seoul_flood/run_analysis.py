@@ -726,12 +726,25 @@ def build_fold_inputs(validation_fold):
     return fold_inputs
 
 
-# Random Forest 입력 feature 목록이다. AlphaEarth는 원본 64개 band가 아니라 alpha_score 1개로 들어간다.
+# 모델 입력 feature 목록이다. AlphaEarth는 원본 64개 band가 아니라 alpha_score 1개로 들어간다.
 INPUT_BANDS = (
     static_features["base_bands"]
     + ["alpha_score"]
     + static_features["drainage_bands"]
 )
+
+
+FINAL_MODEL_CONFIG = {
+    "name": "GradientTreeBoost",
+    "family": "gradient_tree_boost",
+    "params": {
+        "numberOfTrees": 100,
+        "shrinkage": 0.05,
+        "samplingRate": 0.7,
+        "maxNodes": 32,
+        "seed": 13,
+    },
+}
 
 
 # 지정된 train 또는 validation 영역에서 양성/음성 sample을 균형 있게 추출한다.
@@ -764,15 +777,16 @@ def sample_split(feature_image, input_bands, positive_mask, negative_mask, area_
     )
 
 
-# Earth Engine의 Random Forest를 확률 출력 모드로 학습한다.
-def train_rf(train_fc, input_bands):
+# 최종 분석 모델인 Earth Engine Gradient Tree Boosting을 확률 출력 모드로 학습한다.
+def train_classifier(train_fc, input_bands):
+    params = FINAL_MODEL_CONFIG["params"]
     return (
-        ee.Classifier.smileRandomForest(
-            numberOfTrees=100,
-            variablesPerSplit=min(3, len(input_bands)),
-            minLeafPopulation=2,
-            bagFraction=0.7,
-            seed=13,
+        ee.Classifier.smileGradientTreeBoost(
+            numberOfTrees=params["numberOfTrees"],
+            shrinkage=params["shrinkage"],
+            samplingRate=params["samplingRate"],
+            maxNodes=params["maxNodes"],
+            seed=params["seed"],
         )
         .setOutputMode("PROBABILITY")
         .train(train_fc, "label", input_bands)
@@ -887,9 +901,13 @@ def sample_metrics(sample_fc, classifier):
     return binary_metrics(labels, scores)
 
 
-# Random Forest가 어떤 feature를 많이 사용했는지 fold별 중요도를 가져온다.
+# 모델이 어떤 feature를 많이 사용했는지 fold별 중요도를 가져온다.
 def classifier_importance(classifier, input_bands):
-    explain_info = classifier.explain().getInfo()
+    try:
+        explain_info = classifier.explain().getInfo()
+    except Exception as error:
+        print(f"Feature importance unavailable: {error}")
+        explain_info = {}
     raw_importance = explain_info.get("importance", {})
     importance = {band: float(raw_importance.get(band, 0)) for band in input_bands}
     total = sum(importance.values())
@@ -900,7 +918,7 @@ def classifier_importance(classifier, input_bands):
     return importance, normalized
 
 
-# 하나의 validation fold에 대해 sample 추출, RF 학습, validation 평가, feature importance 계산을 수행한다.
+# 하나의 validation fold에 대해 sample 추출, GTB 학습, validation 평가, feature importance 계산을 수행한다.
 def run_fold(validation_fold):
     fold_inputs = build_fold_inputs(validation_fold)
     negative_mask = make_negative_mask(NEGATIVE_BUFFER_M)
@@ -920,10 +938,19 @@ def run_fold(validation_fold):
         fold_inputs["valid_area_mask"],
         1700 + validation_fold,
     )
-    classifier = train_rf(train_fc, INPUT_BANDS)
-    valid_confusion = evaluate_fc(valid_fc, classifier)
-    importance, normalized_importance = classifier_importance(classifier, INPUT_BANDS)
+    classifier = train_classifier(train_fc, INPUT_BANDS)
+    ee_valid_confusion = evaluate_fc(valid_fc, classifier)
+    valid_confusion = ee_valid_confusion.getInfo()
+    valid_accuracy = ee_valid_confusion.accuracy().getInfo()
+    valid_kappa = ee_valid_confusion.kappa().getInfo()
+    valid_metrics = sample_metrics(valid_fc, classifier)
+    importance, normalized_importance = classifier_importance(
+        classifier,
+        INPUT_BANDS,
+    )
     result = {
+        "model": FINAL_MODEL_CONFIG["name"],
+        "model_family": FINAL_MODEL_CONFIG["family"],
         "fold": validation_fold,
         "train_positive_count": fold_inputs["train_positive"].size().getInfo(),
         "valid_positive_count": fold_inputs["valid_positive"].size().getInfo(),
@@ -931,15 +958,16 @@ def run_fold(validation_fold):
         "valid_sample_count": valid_fc.size().getInfo(),
         "train_label_histogram": train_fc.aggregate_histogram("label").getInfo(),
         "valid_label_histogram": valid_fc.aggregate_histogram("label").getInfo(),
-        "valid_confusion": valid_confusion.getInfo(),
-        "valid_accuracy": valid_confusion.accuracy().getInfo(),
-        "valid_kappa": valid_confusion.kappa().getInfo(),
-        "valid_metrics": sample_metrics(valid_fc, classifier),
+        "valid_confusion": valid_confusion,
+        "valid_accuracy": valid_accuracy,
+        "valid_kappa": valid_kappa,
+        "valid_metrics": valid_metrics,
         "importance": importance,
         "importance_normalized": normalized_importance,
     }
     print(
         {
+            "model": result["model"],
             "fold": result["fold"],
             "accuracy": result["valid_accuracy"],
             "kappa": result["valid_kappa"],
@@ -1026,6 +1054,8 @@ def summarize_importance(rows):
 # CSV/JSON 저장에 필요한 fold 결과만 남겨 출력 파일을 간결하게 만든다.
 def sanitize_fold_result(row):
     return {
+        "model": row["model"],
+        "model_family": row["model_family"],
         "fold": row["fold"],
         "train_positive_count": row["train_positive_count"],
         "valid_positive_count": row["valid_positive_count"],
@@ -1043,6 +1073,7 @@ def sanitize_fold_result(row):
 # 전체 실행 진입점: 5-fold 공간 검증을 돌리고 metric/importance/output 경로를 저장한다.
 def main():
     print("Analysis model bands:", INPUT_BANDS)
+    print("Final model:", FINAL_MODEL_CONFIG["name"])
     print("Positive fold histogram:", positive_data["fold_histogram"])
     print("AlphaEarth tiles:", alpha_tile_count)
 
@@ -1075,6 +1106,7 @@ def main():
         },
         "model": {
             "name": "Hybrid-plus-drainage-gu-stats",
+            "classifier": FINAL_MODEL_CONFIG,
             "bands": INPUT_BANDS,
         },
         "validation": {

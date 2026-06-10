@@ -8,7 +8,23 @@ import zipfile
 
 import ee
 import geemap
+import numpy as np
+import pandas as pd
 import shapefile
+
+try:
+    from lightgbm import LGBMClassifier
+    LGBM_IMPORT_ERROR = None
+except Exception as error:
+    LGBMClassifier = None
+    LGBM_IMPORT_ERROR = error
+
+try:
+    from xgboost import XGBClassifier
+    XGB_IMPORT_ERROR = None
+except Exception as error:
+    XGBClassifier = None
+    XGB_IMPORT_ERROR = error
 
 
 def load_env_file(path=".env"):
@@ -395,11 +411,12 @@ if not PROJECT_ID:
     raise ValueError("EE_PROJECT_ID is missing. Set it in .env or your shell environment.")
 
 YEAR = int(os.environ.get("YEAR", "2024"))
-OUTPUT_HTML = resolve_output_path(os.environ.get("OUTPUT_HTML", "seoul_flood_risk_rf.html"))
+OUTPUT_HTML = resolve_output_path(os.environ.get("OUTPUT_HTML", "seoul_flood_risk_gtb.html"))
 OUTPUT_DIR = resolve_output_path(os.environ.get("OUTPUT_DIR", "outputs"))
 METRICS_JSON = os.path.join(OUTPUT_DIR, "metrics.json")
 CV_RESULTS_CSV = os.path.join(OUTPUT_DIR, "cv_results.csv")
 FEATURE_IMPORTANCE_CSV = os.path.join(OUTPUT_DIR, "feature_importance.csv")
+MODEL_COMPARISON_CSV = os.path.join(OUTPUT_DIR, "model_comparison.csv")
 TOPK_SUMMARY_CSV = os.path.join(OUTPUT_DIR, "topk_summary.csv")
 SELECTED_FOLD_TOPK_CSV = os.path.join(OUTPUT_DIR, "selected_fold_topk.csv")
 RISK_GRADE_SUMMARY_CSV = os.path.join(OUTPUT_DIR, "risk_grade_summary.csv")
@@ -408,6 +425,7 @@ CUMULATIVE_RISK_GRADE_POINTS_CSV = os.path.join(
     OUTPUT_DIR,
     "cumulative_risk_grade_points.csv",
 )
+EXTERNAL_VALIDATION_CSV = os.path.join(OUTPUT_DIR, "external_validation.csv")
 ANALYSIS_SCALE = int(os.environ.get("ANALYSIS_SCALE", "30"))
 BOUNDARY_BUFFER_M = int(os.environ.get("BOUNDARY_BUFFER_M", "0"))
 if BOUNDARY_BUFFER_M < 0:
@@ -486,6 +504,47 @@ HOTSPOT_EVAL_IN_CV = os.environ.get(
 GENERATE_MAP_OUTPUTS = os.environ.get("GENERATE_MAP_OUTPUTS", "1") == "1"
 RUN_COVERAGE_DIAGNOSTICS = os.environ.get("RUN_COVERAGE_DIAGNOSTICS", "0") == "1"
 RUN_BUFFER_SENSITIVITY = os.environ.get("RUN_BUFFER_SENSITIVITY", "0") == "1"
+RUN_MODEL_COMPARISON = os.environ.get("RUN_MODEL_COMPARISON", "0") == "1"
+MODEL_COMPARISON_NAMES = parse_str_list(
+    os.environ.get(
+        "MODEL_COMPARISON_NAMES",
+        "RandomForest,GradientTreeBoost,XGBoost,LightGBM,CART,KNN",
+    )
+)
+OFFICIAL_FLOOD_GEOJSON = resolve_input_path(
+    os.environ.get("OFFICIAL_FLOOD_GEOJSON", ""),
+    fallback_dir=os.path.join(SCRIPT_DIR, "source"),
+) if os.environ.get("OFFICIAL_FLOOD_GEOJSON") else ""
+OFFICIAL_FLOOD_EE_ASSET = os.environ.get("OFFICIAL_FLOOD_EE_ASSET", "").strip()
+DEFAULT_OFFICIAL_FLOOD_SHP_ZIP_DIR = os.path.join(
+    SCRIPT_DIR,
+    "source",
+    "official_city_flood",
+)
+OFFICIAL_FLOOD_SHP_ZIP_DIR = os.environ.get("OFFICIAL_FLOOD_SHP_ZIP_DIR", "").strip()
+if OFFICIAL_FLOOD_SHP_ZIP_DIR:
+    OFFICIAL_FLOOD_SHP_ZIP_DIR = resolve_input_path(
+        OFFICIAL_FLOOD_SHP_ZIP_DIR,
+        fallback_dir=os.path.join(SCRIPT_DIR, "source"),
+    )
+elif os.path.isdir(DEFAULT_OFFICIAL_FLOOD_SHP_ZIP_DIR):
+    OFFICIAL_FLOOD_SHP_ZIP_DIR = DEFAULT_OFFICIAL_FLOOD_SHP_ZIP_DIR
+OFFICIAL_FLOOD_SHP_PROJ = os.environ.get("OFFICIAL_FLOOD_SHP_PROJ", "EPSG:5186")
+OFFICIAL_FLOOD_SHP_ENCODING = os.environ.get("OFFICIAL_FLOOD_SHP_ENCODING", "cp949")
+OFFICIAL_FLOOD_SHP_SIMPLIFY_M = float(
+    os.environ.get("OFFICIAL_FLOOD_SHP_SIMPLIFY_M", "15")
+)
+RUN_EXTERNAL_VALIDATION = os.environ.get(
+    "RUN_EXTERNAL_VALIDATION",
+    "1" if (
+        OFFICIAL_FLOOD_GEOJSON
+        or OFFICIAL_FLOOD_EE_ASSET
+        or OFFICIAL_FLOOD_SHP_ZIP_DIR
+    ) else "0",
+) == "1"
+EXTERNAL_VALIDATION_PERCENTILES = parse_int_list(
+    os.environ.get("EXTERNAL_VALIDATION_PERCENTILES", "80,90,95")
+)
 POSITIVE_BUFFER_SWEEP_M = parse_int_list(
     os.environ.get("POSITIVE_BUFFER_SWEEP_M", "30,60,90")
 )
@@ -798,6 +857,15 @@ print(
         "drainage_gu_stats_min_districts": DRAINAGE_GU_STATS_MIN_DISTRICTS,
         "coverage_diagnostics": RUN_COVERAGE_DIAGNOSTICS,
         "buffer_sensitivity": RUN_BUFFER_SENSITIVITY,
+        "model_comparison": RUN_MODEL_COMPARISON,
+        "model_comparison_names": MODEL_COMPARISON_NAMES,
+        "external_validation": RUN_EXTERNAL_VALIDATION,
+        "official_flood_geojson": OFFICIAL_FLOOD_GEOJSON,
+        "official_flood_ee_asset": OFFICIAL_FLOOD_EE_ASSET,
+        "official_flood_shp_zip_dir": OFFICIAL_FLOOD_SHP_ZIP_DIR,
+        "official_flood_shp_proj": OFFICIAL_FLOOD_SHP_PROJ,
+        "official_flood_shp_simplify_m": OFFICIAL_FLOOD_SHP_SIMPLIFY_M,
+        "external_validation_percentiles": EXTERNAL_VALIDATION_PERCENTILES,
     },
 )
 
@@ -1179,7 +1247,7 @@ def sample_split(feature_image, input_bands, positive_mask, negative_mask, area_
 
 
 def train_hybrid(train_fc):
-    return train_rf(train_fc, hybrid_feature_bands)
+    return train_gtb(train_fc, hybrid_feature_bands)
 
 
 def train_rf(train_fc, input_bands):
@@ -1196,6 +1264,48 @@ def train_rf(train_fc, input_bands):
     )
 
 
+def train_gtb(train_fc, input_bands):
+    return (
+        ee.Classifier.smileGradientTreeBoost(
+            numberOfTrees=100,
+            shrinkage=0.05,
+            samplingRate=0.7,
+            maxNodes=32,
+            seed=13,
+        )
+        .setOutputMode("PROBABILITY")
+        .train(train_fc, "label", input_bands)
+    )
+
+
+def train_cart(train_fc, input_bands):
+    return (
+        ee.Classifier.smileCart(maxNodes=32, minLeafPopulation=2)
+        .setOutputMode("PROBABILITY")
+        .train(train_fc, "label", input_bands)
+    )
+
+
+def train_knn(train_fc, input_bands):
+    return (
+        ee.Classifier.smileKNN(k=9, searchMethod="AUTO", metric="EUCLIDEAN")
+        .setOutputMode("PROBABILITY")
+        .train(train_fc, "label", input_bands)
+    )
+
+
+def train_ee_comparison_classifier(train_fc, input_bands, model_name):
+    if model_name == "RandomForest":
+        return train_rf(train_fc, input_bands)
+    if model_name == "GradientTreeBoost":
+        return train_gtb(train_fc, input_bands)
+    if model_name == "CART":
+        return train_cart(train_fc, input_bands)
+    if model_name == "KNN":
+        return train_knn(train_fc, input_bands)
+    raise ValueError(f"Unsupported Earth Engine comparison model: {model_name}")
+
+
 def evaluate_fc(fc, classifier):
     evaluated = fc.classify(classifier, "probability").map(
         lambda f: f.set("predicted", ee.Number(f.get("probability")).gte(0.5).int())
@@ -1204,13 +1314,144 @@ def evaluate_fc(fc, classifier):
 
 
 def classifier_importance(classifier, input_bands):
-    """RF 변수 중요도와 정규화된 중요도를 반환한다."""
-    explain_info = classifier.explain().getInfo()
+    """모델 변수 중요도와 정규화된 중요도를 반환한다."""
+    try:
+        explain_info = classifier.explain().getInfo()
+    except Exception as error:
+        print(f"Feature importance unavailable: {error}")
+        explain_info = {}
     raw_importance = explain_info.get("importance", {})
     importance = {
         band: float(raw_importance.get(band, 0))
         for band in input_bands
     }
+    total = sum(importance.values())
+    normalized = {
+        band: (value / total if total else 0)
+        for band, value in importance.items()
+    }
+    return importance, normalized
+
+
+def confusion_from_scores(labels, scores, threshold=0.5):
+    predictions = [1 if score >= threshold else 0 for score in scores]
+    true_positive = sum(1 for y, p in zip(labels, predictions) if y == 1 and p == 1)
+    true_negative = sum(1 for y, p in zip(labels, predictions) if y == 0 and p == 0)
+    false_positive = sum(1 for y, p in zip(labels, predictions) if y == 0 and p == 1)
+    false_negative = sum(1 for y, p in zip(labels, predictions) if y == 1 and p == 0)
+    return [[true_negative, false_positive], [false_negative, true_positive]]
+
+
+def kappa_from_confusion(confusion):
+    true_negative, false_positive = confusion[0]
+    false_negative, true_positive = confusion[1]
+    total = true_negative + false_positive + false_negative + true_positive
+    if total == 0:
+        return None
+
+    observed = (true_negative + true_positive) / total
+    actual_negative = true_negative + false_positive
+    actual_positive = false_negative + true_positive
+    predicted_negative = true_negative + false_negative
+    predicted_positive = false_positive + true_positive
+    expected = (
+        actual_negative * predicted_negative
+        + actual_positive * predicted_positive
+    ) / (total * total)
+    return (observed - expected) / (1 - expected) if expected < 1 else None
+
+
+def feature_collection_rows(sample_fc, input_bands):
+    """EE sample을 XGBoost/LightGBM 학습용 Python row로 변환한다."""
+    properties = ["label"] + input_bands
+    features = sample_fc.select(properties).getInfo()["features"]
+    rows = []
+    for feature in features:
+        props = feature["properties"]
+        if props.get("label") is None:
+            continue
+        if any(props.get(band) is None for band in input_bands):
+            continue
+        rows.append(
+            {
+                "label": int(props["label"]),
+                "features": [float(props[band]) for band in input_bands],
+            }
+        )
+    return rows
+
+
+def label_histogram_from_rows(rows):
+    histogram = {}
+    for row in rows:
+        key = str(row["label"])
+        histogram[key] = histogram.get(key, 0) + 1
+    return histogram
+
+
+def local_feature_frame(rows, input_bands):
+    return pd.DataFrame(
+        [row["features"] for row in rows],
+        columns=input_bands,
+    )
+
+
+def train_local_comparison_classifier(train_rows, input_bands, model_name):
+    features = local_feature_frame(train_rows, input_bands)
+    labels = np.asarray([row["label"] for row in train_rows], dtype=int)
+
+    if model_name == "XGBoost":
+        if XGBClassifier is None:
+            raise ImportError(f"xgboost is unavailable: {XGB_IMPORT_ERROR}")
+        model = XGBClassifier(
+            n_estimators=200,
+            max_depth=3,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            objective="binary:logistic",
+            eval_metric="logloss",
+            random_state=13,
+            n_jobs=1,
+        )
+    elif model_name == "LightGBM":
+        if LGBMClassifier is None:
+            raise ImportError(f"lightgbm is unavailable: {LGBM_IMPORT_ERROR}")
+        model = LGBMClassifier(
+            n_estimators=200,
+            learning_rate=0.05,
+            num_leaves=15,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            objective="binary",
+            random_state=13,
+            n_jobs=1,
+            verbose=-1,
+        )
+    else:
+        raise ValueError(f"Unsupported local comparison model: {model_name}")
+
+    model.fit(features, labels)
+    return model
+
+
+def local_model_scores(model, rows, input_bands):
+    features = local_feature_frame(rows, input_bands)
+    probabilities = model.predict_proba(features)
+    classes = list(getattr(model, "classes_", [0, 1]))
+    positive_index = classes.index(1) if 1 in classes else len(classes) - 1
+    return [float(score) for score in probabilities[:, positive_index]]
+
+
+def local_model_importance(model, input_bands):
+    raw_importance = getattr(model, "feature_importances_", None)
+    if raw_importance is None:
+        importance = {band: 0 for band in input_bands}
+    else:
+        importance = {
+            band: float(value)
+            for band, value in zip(input_bands, raw_importance)
+        }
     total = sum(importance.values())
     normalized = {
         band: (value / total if total else 0)
@@ -1499,6 +1740,403 @@ def compute_risk_grade_point_metrics(risk_grade, validation_points, grade_summar
         )
 
     return grade_metrics, cumulative_metrics
+
+
+def point_segment_distance(point, start, end):
+    """점과 선분 사이의 거리. 공식 SHP 좌표계가 m 단위라 단순화 허용오차도 m다."""
+    px, py = point
+    x1, y1 = start
+    x2, y2 = end
+    dx = x2 - x1
+    dy = y2 - y1
+    if dx == 0 and dy == 0:
+        return ((px - x1) ** 2 + (py - y1) ** 2) ** 0.5
+
+    ratio = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
+    ratio = max(0, min(1, ratio))
+    proj_x = x1 + ratio * dx
+    proj_y = y1 + ratio * dy
+    return ((px - proj_x) ** 2 + (py - proj_y) ** 2) ** 0.5
+
+
+def simplify_line(points, tolerance):
+    """Douglas-Peucker line simplification."""
+    if tolerance <= 0 or len(points) <= 2:
+        return points
+
+    keep = [False] * len(points)
+    keep[0] = True
+    keep[-1] = True
+    stack = [(0, len(points) - 1)]
+    while stack:
+        start_idx, end_idx = stack.pop()
+        max_distance = -1
+        max_idx = None
+        for idx in range(start_idx + 1, end_idx):
+            distance = point_segment_distance(
+                points[idx],
+                points[start_idx],
+                points[end_idx],
+            )
+            if distance > max_distance:
+                max_distance = distance
+                max_idx = idx
+        if max_idx is not None and max_distance > tolerance:
+            keep[max_idx] = True
+            stack.append((start_idx, max_idx))
+            stack.append((max_idx, end_idx))
+
+    return [point for point, should_keep in zip(points, keep) if should_keep]
+
+
+def simplify_ring(ring, tolerance):
+    """닫힌 polygon ring을 단순화하되 최소 3개 꼭짓점과 폐합을 유지한다."""
+    coords = [(float(point[0]), float(point[1])) for point in ring]
+    if len(coords) <= 4 or tolerance <= 0:
+        return [[x, y] for x, y in coords]
+
+    if coords[0] == coords[-1]:
+        coords = coords[:-1]
+    if len(coords) <= 3:
+        return [[x, y] for x, y in coords + [coords[0]]]
+
+    midpoint = len(coords) // 2
+    first_half = simplify_line(coords[: midpoint + 1], tolerance)
+    second_half = simplify_line(coords[midpoint:] + [coords[0]], tolerance)
+    simplified = first_half[:-1] + second_half[:-1]
+
+    deduped = []
+    for point in simplified:
+        if not deduped or point != deduped[-1]:
+            deduped.append(point)
+    if len(deduped) < 3:
+        deduped = coords
+    if deduped[0] != deduped[-1]:
+        deduped.append(deduped[0])
+    return [[x, y] for x, y in deduped]
+
+
+def simplify_geometry(geometry, tolerance):
+    """공식 SHP GeoJSON geometry를 분석 해상도에 맞춰 단순화한다."""
+    if tolerance <= 0:
+        return geometry
+
+    geom_type = geometry.get("type")
+    if geom_type == "Polygon":
+        return {
+            **geometry,
+            "coordinates": [
+                simplify_ring(ring, tolerance)
+                for ring in geometry["coordinates"]
+            ],
+        }
+    if geom_type == "MultiPolygon":
+        return {
+            **geometry,
+            "coordinates": [
+                [simplify_ring(ring, tolerance) for ring in polygon]
+                for polygon in geometry["coordinates"]
+            ],
+        }
+    return geometry
+
+
+def count_geometry_points(geometry):
+    geom_type = geometry.get("type")
+    if geom_type == "Polygon":
+        return sum(len(ring) for ring in geometry["coordinates"])
+    if geom_type == "MultiPolygon":
+        return sum(
+            len(ring)
+            for polygon in geometry["coordinates"]
+            for ring in polygon
+        )
+    return 0
+
+
+def shape_record_to_ee_feature(shape_record, source_zip, source_shp):
+    """EPSG:5186 공식 SHP record를 EE feature로 변환한다."""
+    if shape_record.shape.shapeType == shapefile.NULL:
+        return None
+
+    geometry = shape_record.shape.__geo_interface__
+    if not geometry or geometry.get("type") == "Null":
+        return None
+    geometry = simplify_geometry(geometry, OFFICIAL_FLOOD_SHP_SIMPLIFY_M)
+
+    properties = dict(shape_record.record.as_dict())
+    properties.update(
+        {
+            "source_zip": source_zip,
+            "source_shp": source_shp,
+        }
+    )
+    return ee.Feature(
+        ee.Geometry(geometry, OFFICIAL_FLOOD_SHP_PROJ, False),
+        properties,
+    )
+
+
+def load_shp_zip_feature_collection(zip_dir):
+    """공식 도시침수 SHP ZIP 폴더를 EE FeatureCollection으로 읽는다."""
+    if not os.path.isdir(zip_dir):
+        return None, {
+            "used": False,
+            "source_type": "shp_zip_dir",
+            "source": zip_dir,
+            "zip_count": 0,
+            "feature_count": 0,
+            "reason": "directory_missing",
+        }
+
+    zip_paths = sorted(
+        os.path.join(zip_dir, name)
+        for name in os.listdir(zip_dir)
+        if name.lower().endswith(".zip")
+    )
+    if not zip_paths:
+        return None, {
+            "used": False,
+            "source_type": "shp_zip_dir",
+            "source": zip_dir,
+            "zip_count": 0,
+            "feature_count": 0,
+            "reason": "zip_files_missing",
+        }
+
+    features = []
+    shp_file_count = 0
+    for zip_path in zip_paths:
+        with zipfile.ZipFile(zip_path) as zf, tempfile.TemporaryDirectory() as temp_dir:
+            zf.extractall(temp_dir)
+            shp_paths = []
+            for root, _, files in os.walk(temp_dir):
+                shp_paths.extend(
+                    os.path.join(root, name)
+                    for name in files
+                    if name.lower().endswith(".shp")
+                )
+            shp_file_count += len(shp_paths)
+
+            for shp_path in shp_paths:
+                reader = shapefile.Reader(
+                    shp_path,
+                    encoding=OFFICIAL_FLOOD_SHP_ENCODING,
+                )
+                for shape_record in reader.iterShapeRecords():
+                    feature = shape_record_to_ee_feature(
+                        shape_record,
+                        os.path.basename(zip_path),
+                        os.path.basename(shp_path),
+                    )
+                    if feature is not None:
+                        features.append(feature)
+
+    external_fc = ee.FeatureCollection(features).filterBounds(seoul)
+    count = external_fc.size().getInfo()
+    return external_fc, {
+        "used": count > 0,
+        "source_type": "shp_zip_dir",
+        "source": zip_dir,
+        "projection": OFFICIAL_FLOOD_SHP_PROJ,
+        "encoding": OFFICIAL_FLOOD_SHP_ENCODING,
+        "zip_count": len(zip_paths),
+        "shp_file_count": shp_file_count,
+        "feature_count": count,
+        "reason": None if count > 0 else "empty_after_filter_bounds",
+    }
+
+
+def load_external_flood_reference():
+    """공식 침수지도/외부 기준 polygon을 EE FeatureCollection으로 불러온다."""
+    if OFFICIAL_FLOOD_EE_ASSET:
+        external_fc = ee.FeatureCollection(OFFICIAL_FLOOD_EE_ASSET).filterBounds(seoul)
+        count = external_fc.size().getInfo()
+        return external_fc, {
+            "used": count > 0,
+            "source_type": "earth_engine_asset",
+            "source": OFFICIAL_FLOOD_EE_ASSET,
+            "feature_count": count,
+            "reason": None if count > 0 else "empty_after_filter_bounds",
+        }
+
+    if OFFICIAL_FLOOD_GEOJSON:
+        if not os.path.exists(OFFICIAL_FLOOD_GEOJSON):
+            return None, {
+                "used": False,
+                "source_type": "geojson",
+                "source": OFFICIAL_FLOOD_GEOJSON,
+                "feature_count": 0,
+                "reason": "file_missing",
+            }
+        with open(OFFICIAL_FLOOD_GEOJSON, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        features = []
+        for feature in payload.get("features", []):
+            geometry = feature.get("geometry")
+            if not geometry:
+                continue
+            features.append(
+                ee.Feature(
+                    ee.Geometry(geometry),
+                    feature.get("properties", {}),
+                )
+            )
+        external_fc = ee.FeatureCollection(features).filterBounds(seoul)
+        count = external_fc.size().getInfo()
+        return external_fc, {
+            "used": count > 0,
+            "source_type": "geojson",
+            "source": OFFICIAL_FLOOD_GEOJSON,
+            "feature_count": count,
+            "reason": None if count > 0 else "empty_after_filter_bounds",
+        }
+
+    if OFFICIAL_FLOOD_SHP_ZIP_DIR:
+        return load_shp_zip_feature_collection(OFFICIAL_FLOOD_SHP_ZIP_DIR)
+
+    return None, {
+        "used": False,
+        "source_type": None,
+        "source": None,
+        "feature_count": 0,
+        "reason": "not_configured",
+    }
+
+
+def area_sum_km2(mask):
+    """마스크가 켜진 영역의 면적(km2)을 계산한다."""
+    value = (
+        ee.Image.pixelArea()
+        .divide(1e6)
+        .updateMask(mask)
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=seoul,
+            scale=ANALYSIS_SCALE,
+            maxPixels=1e9,
+            bestEffort=True,
+            tileScale=4,
+        )
+        .get("area")
+    )
+    return ee.Number(ee.Algorithms.If(value, value, 0))
+
+
+def compute_external_flood_validation(probability, external_fc):
+    """모델 고위험지역과 공식/외부 침수 polygon의 면적 겹침을 평가한다."""
+    probability_mask = probability.mask()
+    analysis_mask = ee.Image.constant(1).clip(seoul).updateMask(probability_mask)
+    external_mask = (
+        ee.Image.constant(0)
+        .byte()
+        .paint(external_fc, 1)
+        .rename("external_flood")
+        .clip(seoul)
+        .updateMask(probability_mask)
+    )
+    external_binary = external_mask.unmask(0).eq(1)
+    external_self_mask = external_binary.selfMask()
+    outside_external_mask = external_binary.eq(0).updateMask(analysis_mask)
+
+    analysis_area = area_sum_km2(analysis_mask)
+    external_area = area_sum_km2(external_self_mask)
+    external_area_share = ee.Number(
+        ee.Algorithms.If(
+            analysis_area.gt(0),
+            external_area.divide(analysis_area),
+            0,
+        )
+    )
+    inside_mean = probability.updateMask(external_self_mask).reduceRegion(
+        reducer=ee.Reducer.mean(),
+        geometry=seoul,
+        scale=ANALYSIS_SCALE,
+        maxPixels=1e9,
+        bestEffort=True,
+        tileScale=4,
+    ).get("flood_prob")
+    outside_mean = probability.updateMask(outside_external_mask).reduceRegion(
+        reducer=ee.Reducer.mean(),
+        geometry=seoul,
+        scale=ANALYSIS_SCALE,
+        maxPixels=1e9,
+        bestEffort=True,
+        tileScale=4,
+    ).get("flood_prob")
+
+    mean_probability_delta = ee.Algorithms.If(
+        ee.Algorithms.IsEqual(inside_mean, None),
+        None,
+        ee.Algorithms.If(
+            ee.Algorithms.IsEqual(outside_mean, None),
+            None,
+            ee.Number(inside_mean).subtract(outside_mean),
+        ),
+    )
+
+    metric_features = []
+    for percentile in EXTERNAL_VALIDATION_PERCENTILES:
+        percentile_values = ee.Dictionary(
+            probability.reduceRegion(
+                reducer=ee.Reducer.percentile([percentile]),
+                geometry=seoul,
+                scale=ANALYSIS_SCALE,
+                maxPixels=1e9,
+                bestEffort=True,
+                tileScale=4,
+            )
+        )
+        threshold = ee.Number(percentile_values.values().get(0))
+        hotspot_mask = probability.gte(threshold).selfMask()
+        hotspot_area = area_sum_km2(hotspot_mask)
+        overlap_mask = hotspot_mask.updateMask(external_self_mask)
+        overlap_area = area_sum_km2(overlap_mask)
+        hotspot_precision = ee.Algorithms.If(
+            hotspot_area.gt(0),
+            overlap_area.divide(hotspot_area),
+            None,
+        )
+        external_recall = ee.Algorithms.If(
+            external_area.gt(0),
+            overlap_area.divide(external_area),
+            None,
+        )
+        hotspot_area_share = ee.Algorithms.If(
+            analysis_area.gt(0),
+            hotspot_area.divide(analysis_area),
+            None,
+        )
+        lift = ee.Algorithms.If(
+            external_area_share.gt(0),
+            ee.Number(hotspot_precision).divide(external_area_share),
+            None,
+        )
+        metric_features.append(
+            ee.Feature(
+                None,
+                {
+                    "percentile": percentile,
+                    "top_percent": 100 - percentile,
+                    "threshold": threshold,
+                    "analysis_area_km2": analysis_area,
+                    "external_flood_area_km2": external_area,
+                    "external_flood_area_share": external_area_share,
+                    "hotspot_area_km2": hotspot_area,
+                    "hotspot_area_share": hotspot_area_share,
+                    "overlap_area_km2": overlap_area,
+                    "hotspot_precision_vs_external": hotspot_precision,
+                    "external_flood_recall": external_recall,
+                    "overlap_lift": lift,
+                    "mean_probability_inside_external": inside_mean,
+                    "mean_probability_outside_external": outside_mean,
+                    "mean_probability_delta": mean_probability_delta,
+                },
+            )
+        )
+
+    metrics = ee.FeatureCollection(metric_features).getInfo()["features"]
+    return [feature["properties"] for feature in metrics]
 
 
 def build_risk_grade_legend(grade_summaries):
@@ -1886,7 +2524,7 @@ def run_hybrid_fold(
     if train_count == 0 or valid_count == 0:
         raise ValueError(f"Fold {validation_fold}에서 학습/검증 샘플을 만들지 못했습니다.")
 
-    classifier = train_rf(train_fc, input_bands)
+    classifier = train_gtb(train_fc, input_bands)
     train_conf = evaluate_fc(train_fc, classifier)
     valid_conf = evaluate_fc(valid_fc, classifier)
     valid_metrics = compute_sample_classification_metrics(valid_fc, classifier)
@@ -2301,6 +2939,142 @@ def run_spatial_cv(
     return rows
 
 
+def run_model_comparison_fold(model_name, validation_fold, input_bands):
+    """실험용 모델 비교: 같은 fold sample로 EE 모델과 로컬 모델을 비교한다."""
+    local_models = {"XGBoost", "LightGBM"}
+    ee_models = {"RandomForest", "GradientTreeBoost", "CART", "KNN"}
+    if model_name not in local_models and model_name not in ee_models:
+        raise ValueError(f"Unsupported comparison model: {model_name}")
+
+    fold_inputs = build_hybrid_inputs(validation_fold, POSITIVE_BUFFER_M)
+    negative_mask = make_negative_mask(NEGATIVE_BUFFER_M)
+    train_fc = sample_split(
+        fold_inputs["feature_image"],
+        input_bands,
+        fold_inputs["positive_train_mask"],
+        negative_mask,
+        fold_inputs["train_area_mask"],
+        700 + validation_fold,
+    )
+    valid_fc = sample_split(
+        fold_inputs["feature_image"],
+        input_bands,
+        fold_inputs["positive_valid_mask"],
+        negative_mask,
+        fold_inputs["valid_area_mask"],
+        1700 + validation_fold,
+    )
+
+    if model_name in local_models:
+        train_rows = feature_collection_rows(train_fc, input_bands)
+        valid_rows = feature_collection_rows(valid_fc, input_bands)
+        classifier = train_local_comparison_classifier(
+            train_rows,
+            input_bands,
+            model_name,
+        )
+        labels = [row["label"] for row in valid_rows]
+        scores = local_model_scores(classifier, valid_rows, input_bands)
+        valid_metrics = binary_classification_metrics(labels, scores)
+        valid_confusion = confusion_from_scores(labels, scores)
+        valid_accuracy = valid_metrics["accuracy"]
+        valid_kappa = kappa_from_confusion(valid_confusion)
+        train_sample_count = len(train_rows)
+        valid_sample_count = len(valid_rows)
+        train_label_histogram = label_histogram_from_rows(train_rows)
+        valid_label_histogram = label_histogram_from_rows(valid_rows)
+        importance, normalized_importance = local_model_importance(
+            classifier,
+            input_bands,
+        )
+        backend = "local"
+    else:
+        classifier = train_ee_comparison_classifier(train_fc, input_bands, model_name)
+        valid_conf = evaluate_fc(valid_fc, classifier)
+        valid_confusion = valid_conf.getInfo()
+        valid_accuracy = valid_conf.accuracy().getInfo()
+        valid_kappa = valid_conf.kappa().getInfo()
+        valid_metrics = compute_sample_classification_metrics(valid_fc, classifier)
+        train_sample_count = train_fc.size().getInfo()
+        valid_sample_count = valid_fc.size().getInfo()
+        train_label_histogram = train_fc.aggregate_histogram("label").getInfo()
+        valid_label_histogram = valid_fc.aggregate_histogram("label").getInfo()
+        importance, normalized_importance = classifier_importance(
+            classifier,
+            input_bands,
+        )
+        backend = "earth_engine"
+
+    result = {
+        "model": model_name,
+        "model_backend": backend,
+        "fold": validation_fold,
+        "positive_buffer_m": POSITIVE_BUFFER_M,
+        "negative_buffer_m": NEGATIVE_BUFFER_M,
+        "train_positive_count": fold_inputs["train_positive"].size().getInfo(),
+        "valid_positive_count": fold_inputs["valid_positive"].size().getInfo(),
+        "train_sample_count": train_sample_count,
+        "valid_sample_count": valid_sample_count,
+        "train_label_histogram": train_label_histogram,
+        "valid_label_histogram": valid_label_histogram,
+        "valid_confusion": valid_confusion,
+        "valid_accuracy": valid_accuracy,
+        "valid_kappa": valid_kappa,
+        "valid_metrics": valid_metrics,
+        "importance": importance,
+        "importance_normalized": normalized_importance,
+    }
+    print(
+        {
+            "model": model_name,
+            "backend": backend,
+            "fold": validation_fold,
+            "accuracy": valid_accuracy,
+            "kappa": valid_kappa,
+            "roc_auc": valid_metrics.get("roc_auc"),
+            "pr_auc": valid_metrics.get("pr_auc"),
+            "recall": valid_metrics.get("recall"),
+            "f1": valid_metrics.get("f1"),
+        }
+    )
+    return result
+
+
+def run_model_comparison(input_bands, folds):
+    """RF/GTB/CART/KNN/XGBoost/LightGBM 비교 실험을 test.py에 기록한다."""
+    print("\nModel comparison experiment:")
+    comparison = {
+        "summaries": [],
+        "fold_results": [],
+        "feature_importance": {},
+    }
+    for model_name in MODEL_COMPARISON_NAMES:
+        model_rows = [
+            run_model_comparison_fold(model_name, fold, input_bands)
+            for fold in folds
+        ]
+        summary = {
+            "model": model_name,
+            "model_backend": model_rows[0]["model_backend"] if model_rows else None,
+            **summarize_validation(model_rows),
+        }
+        comparison["summaries"].append(summary)
+        comparison["fold_results"].extend(
+            {
+                "model": model_name,
+                "model_backend": row["model_backend"],
+                **sanitize_fold_result(row),
+            }
+            for row in model_rows
+        )
+        comparison["feature_importance"][model_name] = summarize_importance(
+            model_rows,
+            input_bands,
+        )
+        print(f"{model_name} comparison summary:", summary)
+    return comparison
+
+
 cv_results = run_spatial_cv(
     "Hybrid-basic",
     hybrid_feature_bands,
@@ -2510,11 +3284,55 @@ if RUN_BUFFER_SENSITIVITY:
 else:
     buffer_sensitivity_rows = []
 
+selected_cv_results = []
+if selected_model_name == "Hybrid-basic":
+    selected_cv_results = cv_results
+elif selected_model_name == "Hybrid-no-water-occ":
+    selected_cv_results = no_water_cv_results
+elif selected_model_name == "Hybrid-plus-water-distance":
+    selected_cv_results = water_dist_cv_results
+elif selected_model_name in drainage_cv_results_by_model:
+    selected_cv_results = drainage_cv_results_by_model[selected_model_name]
+elif RUN_FULL_CV:
+    print(f"\nSelected model spatial cross-validation: {selected_model_name}")
+    selected_cv_results = run_spatial_cv(
+        selected_model_name,
+        selected_feature_bands,
+        include_importance=True,
+        include_hotspot_metrics=HOTSPOT_EVAL_IN_CV,
+    )
+
+selected_cv_summary = (
+    summarize_validation(selected_cv_results)
+    if selected_cv_results
+    else None
+)
+selected_cv_importance_summary = (
+    summarize_importance(selected_cv_results, selected_feature_bands)
+    if selected_cv_results
+    else []
+)
+selected_hotspot_cv_summary = (
+    summarize_hotspot_metrics(selected_cv_results)
+    if selected_cv_results
+    else []
+)
+if selected_cv_summary and selected_model_name != "Hybrid-basic":
+    print(f"{selected_model_name} validation summary:", selected_cv_summary)
+    print(f"{selected_model_name} normalized feature importance summary:")
+    for row in selected_cv_importance_summary:
+        print(row)
+    if selected_hotspot_cv_summary:
+        print(f"{selected_model_name} hotspot recall summary:")
+        for row in selected_hotspot_cv_summary:
+            print(row)
+
+NEEDS_PROBABILITY_OUTPUTS = GENERATE_MAP_OUTPUTS or RUN_EXTERNAL_VALIDATION
 hybrid_result = run_hybrid_fold(
     VALIDATION_FOLD,
-    include_map_outputs=GENERATE_MAP_OUTPUTS,
+    include_map_outputs=NEEDS_PROBABILITY_OUTPUTS,
     include_importance=True,
-    include_hotspot_metrics=RUN_HOTSPOT_EVAL and GENERATE_MAP_OUTPUTS,
+    include_hotspot_metrics=RUN_HOTSPOT_EVAL and NEEDS_PROBABILITY_OUTPUTS,
     input_bands=selected_feature_bands,
 )
 seoul_probability = None
@@ -2531,9 +3349,22 @@ risk_grade_summaries = []
 risk_grade_point_metrics = []
 cumulative_risk_grade_point_metrics = []
 risk_grade_legend = {}
+external_reference_summary = {
+    "used": False,
+    "reason": "not_requested",
+}
+external_validation_rows = []
+
+if "probability" in hybrid_result:
+    seoul_probability = hybrid_result["probability"]
+    hotspots = hybrid_result.get("hotspots")
+    threshold = hybrid_result.get("threshold")
+    prob_stats = hybrid_result.get("prob_stats")
+    hotspot_area = hybrid_result.get("hotspot_area")
 
 print(f"\nSelected fold: {VALIDATION_FOLD}")
 print("Selected model:", selected_model_name)
+print("Selected classifier: GradientTreeBoost")
 print("Selected bands:", selected_feature_bands)
 print("Selected fold validation accuracy:", hybrid_result["valid_accuracy"])
 print("Selected fold validation kappa:", hybrid_result["valid_kappa"])
@@ -2602,6 +3433,33 @@ if GENERATE_MAP_OUTPUTS:
 else:
     print("Map/risk-grade outputs skipped: GENERATE_MAP_OUTPUTS=0")
 
+if RUN_EXTERNAL_VALIDATION:
+    external_flood_fc, external_reference_summary = load_external_flood_reference()
+    print("External flood reference summary:", external_reference_summary)
+    if external_reference_summary["used"]:
+        if seoul_probability is None:
+            raise ValueError("External validation requires selected model probability output.")
+        external_validation_rows = compute_external_flood_validation(
+            seoul_probability,
+            external_flood_fc,
+        )
+        print("External flood validation summary:")
+        for row in external_validation_rows:
+            print(row)
+    else:
+        print("External validation skipped:", external_reference_summary["reason"])
+
+model_comparison_results = {
+    "summaries": [],
+    "fold_results": [],
+    "feature_importance": {},
+}
+if RUN_MODEL_COMPARISON:
+    model_comparison_results = run_model_comparison(
+        selected_feature_bands,
+        EVALUATION_FOLDS,
+    )
+
 cv_result_rows = [
     {"model": "Hybrid-basic", **sanitize_fold_result(row)}
     for row in cv_results
@@ -2626,6 +3484,13 @@ for model_name, result_rows in drainage_cv_results_by_model.items():
         {"model": model_name, **sanitize_fold_result(row)}
         for row in result_rows
     )
+if selected_cv_results and selected_model_name not in {
+    row["model"] for row in cv_result_rows
+}:
+    cv_result_rows.extend(
+        {"model": selected_model_name, **sanitize_fold_result(row)}
+        for row in selected_cv_results
+    )
 
 topk_summary_rows = [
     {"model": "Hybrid-basic", **row}
@@ -2635,6 +3500,13 @@ if no_alpha_hotspot_summary:
     topk_summary_rows.extend(
         {"model": "Hybrid-no-alpha", **row}
         for row in no_alpha_hotspot_summary
+    )
+if selected_hotspot_cv_summary and selected_model_name not in {
+    row["model"] for row in topk_summary_rows
+}:
+    topk_summary_rows.extend(
+        {"model": selected_model_name, **row}
+        for row in selected_hotspot_cv_summary
     )
 
 metrics_payload = {
@@ -2663,6 +3535,15 @@ metrics_payload = {
         "hotspot_eval_in_cv": HOTSPOT_EVAL_IN_CV,
         "generate_map_outputs": GENERATE_MAP_OUTPUTS,
         "run_buffer_sensitivity": RUN_BUFFER_SENSITIVITY,
+        "run_model_comparison": RUN_MODEL_COMPARISON,
+        "model_comparison_names": MODEL_COMPARISON_NAMES,
+        "run_external_validation": RUN_EXTERNAL_VALIDATION,
+        "official_flood_geojson": OFFICIAL_FLOOD_GEOJSON,
+        "official_flood_ee_asset": OFFICIAL_FLOOD_EE_ASSET,
+        "official_flood_shp_zip_dir": OFFICIAL_FLOOD_SHP_ZIP_DIR,
+        "official_flood_shp_proj": OFFICIAL_FLOOD_SHP_PROJ,
+        "official_flood_shp_simplify_m": OFFICIAL_FLOOD_SHP_SIMPLIFY_M,
+        "external_validation_percentiles": EXTERNAL_VALIDATION_PERCENTILES,
         "water_distance_pixels": WATER_DISTANCE_PIXELS,
         "drainage_feature_mode": DRAINAGE_FEATURE_MODE,
         "drainage_infra_enabled": DRAINAGE_INFRA_ENABLED,
@@ -2695,11 +3576,26 @@ metrics_payload = {
     },
     "selected_model": {
         "name": selected_model_name,
+        "classifier": "GradientTreeBoost",
+        "classifier_params": {
+            "numberOfTrees": 100,
+            "shrinkage": 0.05,
+            "samplingRate": 0.7,
+            "maxNodes": 32,
+            "seed": 13,
+        },
         "bands": selected_feature_bands,
         "validation_fold": VALIDATION_FOLD,
         "selected_fold_accuracy": hybrid_result["valid_accuracy"],
         "selected_fold_kappa": hybrid_result["valid_kappa"],
         "selected_fold_metrics": hybrid_result.get("valid_metrics", {}),
+        "cv_summary": selected_cv_summary,
+        "cv_feature_importance": selected_cv_importance_summary,
+        "cv_hotspot_summary": selected_hotspot_cv_summary,
+        "cv_fold_results": [
+            sanitize_fold_result(row)
+            for row in selected_cv_results
+        ],
         "probability_stats": prob_stats,
         "hotspot_threshold": threshold,
         "hotspot_area": hotspot_area,
@@ -2721,6 +3617,10 @@ metrics_payload = {
         "cumulative_point_summary": cumulative_risk_grade_point_metrics,
         "legend": risk_grade_legend,
     },
+    "external_validation": {
+        "reference": external_reference_summary,
+        "overlap_metrics": external_validation_rows,
+    },
     "alpha_ablation": {
         "validation_summary": no_alpha_cv_summary,
         "hotspot_summary": no_alpha_hotspot_summary,
@@ -2731,32 +3631,38 @@ metrics_payload = {
         "drainage_infra": drainage_cv_summaries,
     } if RUN_FEATURE_ABLATIONS else None,
     "buffer_sensitivity": buffer_sensitivity_rows,
+    "model_comparison": model_comparison_results,
     "outputs": {
         "html": OUTPUT_HTML,
         "output_dir": OUTPUT_DIR,
         "metrics_json": METRICS_JSON,
         "cv_results_csv": CV_RESULTS_CSV,
         "feature_importance_csv": FEATURE_IMPORTANCE_CSV,
+        "model_comparison_csv": MODEL_COMPARISON_CSV,
         "topk_summary_csv": TOPK_SUMMARY_CSV,
         "selected_fold_topk_csv": SELECTED_FOLD_TOPK_CSV,
         "risk_grade_summary_csv": RISK_GRADE_SUMMARY_CSV,
         "risk_grade_points_csv": RISK_GRADE_POINTS_CSV,
         "cumulative_risk_grade_points_csv": CUMULATIVE_RISK_GRADE_POINTS_CSV,
+        "external_validation_csv": EXTERNAL_VALIDATION_CSV,
     },
 }
 
-save_experiment_outputs(
-    metrics_payload,
-    {
-        CV_RESULTS_CSV: cv_result_rows,
-        FEATURE_IMPORTANCE_CSV: importance_summary,
-        TOPK_SUMMARY_CSV: topk_summary_rows,
-        SELECTED_FOLD_TOPK_CSV: hybrid_result.get("hotspot_metrics", []),
-        RISK_GRADE_SUMMARY_CSV: risk_grade_summaries,
-        RISK_GRADE_POINTS_CSV: risk_grade_point_metrics,
-        CUMULATIVE_RISK_GRADE_POINTS_CSV: cumulative_risk_grade_point_metrics,
-    },
-)
+csv_tables = {
+    CV_RESULTS_CSV: cv_result_rows,
+    FEATURE_IMPORTANCE_CSV: importance_summary,
+    TOPK_SUMMARY_CSV: topk_summary_rows,
+    SELECTED_FOLD_TOPK_CSV: hybrid_result.get("hotspot_metrics", []),
+    RISK_GRADE_SUMMARY_CSV: risk_grade_summaries,
+    RISK_GRADE_POINTS_CSV: risk_grade_point_metrics,
+    CUMULATIVE_RISK_GRADE_POINTS_CSV: cumulative_risk_grade_point_metrics,
+}
+if RUN_MODEL_COMPARISON:
+    csv_tables[MODEL_COMPARISON_CSV] = model_comparison_results["summaries"]
+if RUN_EXTERNAL_VALIDATION:
+    csv_tables[EXTERNAL_VALIDATION_CSV] = external_validation_rows
+
+save_experiment_outputs(metrics_payload, csv_tables)
 
 if GENERATE_MAP_OUTPUTS:
     # 결과 확인용 대화형 HTML 지도를 만든다.
@@ -2825,7 +3731,7 @@ if GENERATE_MAP_OUTPUTS:
     Map.addLayerControl()
     Map.to_html(OUTPUT_HTML)
     sanitize_exported_widget_controls(OUTPUT_HTML)
-    inject_static_legend(OUTPUT_HTML, "Hybrid RF risk grade", risk_grade_legend)
+    inject_static_legend(OUTPUT_HTML, "Hybrid GTB risk grade", risk_grade_legend)
     print(f"Saved: {OUTPUT_HTML}")
 else:
     print("HTML map generation skipped: GENERATE_MAP_OUTPUTS=0")
