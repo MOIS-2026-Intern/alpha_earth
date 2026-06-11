@@ -1,0 +1,1428 @@
+{
+  "config": {
+    "year": 2024,
+    "analysis_scale": 30,
+    "spatial_block_degrees": 0.015,
+    "spatial_folds": 5,
+    "positive_sample_points": 200,
+    "negative_points": 200,
+    "positive_buffer_m": 60,
+    "negative_buffer_m": 300,
+    "hotspot_eval_percentiles": [
+      80,
+      90,
+      95
+    ],
+    "reference_geojson": "/Users/cho/alpha_earth/seoul_flood/source/seoul_flood_reference_points.geojson",
+    "pump_station_csv": "/Users/cho/alpha_earth/seoul_flood/source/seoul_pump_stations.csv",
+    "sewer_sensor_gu_stats_csv": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_sensor_gu_stats.csv",
+    "sewer_level_sensor_csv": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_202605.csv",
+    "run_external_validation": true,
+    "official_flood_shp_freq_root_dir": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency",
+    "official_flood_shp_zip_dir": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood",
+    "official_flood_shp_proj": "EPSG:5186",
+    "official_flood_shp_simplify_m": 30.0,
+    "external_validation_percentiles": [
+      80,
+      90,
+      95
+    ]
+  },
+  "data": {
+    "reference_points_total": 300,
+    "reference_points_in_analysis_boundary": 257,
+    "positive_fold_histogram": {
+      "0": 31,
+      "1": 66,
+      "2": 50,
+      "3": 60,
+      "4": 50
+    },
+    "drainage_infra": [
+      {
+        "dataset": "pump_station_gu_stats",
+        "path": "/Users/cho/alpha_earth/seoul_flood/source/seoul_pump_stations.csv",
+        "exists": true,
+        "used": true,
+        "encoding": "cp949",
+        "raw_records": 96,
+        "unique_stations": 57,
+        "district_count": 16,
+        "skipped_rows": 5,
+        "max_by_metric": {
+          "pump_station_count": 13.0,
+          "pump_capacity_sum": 13408.6,
+          "pump_catchment_area_sum": 57.0,
+          "pump_reservoir_capacity_sum": 1998600.0
+        },
+        "image_summary": {
+          "dataset": "pump_station_gu_stats",
+          "band_names": [
+            "pump_capacity_sum_norm",
+            "pump_catchment_area_sum_norm",
+            "pump_reservoir_capacity_sum_norm",
+            "pump_station_count_norm"
+          ],
+          "district_count": 16,
+          "used": true,
+          "matched_adm2_count": 16
+        }
+      },
+      {
+        "dataset": "sewer_level_sensor_gu_stats",
+        "summary_path": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_sensor_gu_stats.csv",
+        "raw_path": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_202605.csv",
+        "summary_exists": true,
+        "raw_exists": true,
+        "used": true,
+        "encoding": "utf-8-sig",
+        "source": "summary_csv",
+        "district_count": 25,
+        "max_by_metric": {
+          "sewer_sensor_count": 116.0
+        },
+        "image_summary": {
+          "dataset": "sewer_level_sensor_gu_stats",
+          "band_names": [
+            "sewer_sensor_count_norm"
+          ],
+          "district_count": 25,
+          "used": true,
+          "matched_adm2_count": 25
+        }
+      }
+    ],
+    "alphaearth_tiles": 2
+  },
+  "model": {
+    "name": "Hybrid-plus-drainage-gu-stats",
+    "classifier": {
+      "name": "GradientTreeBoost",
+      "family": "gradient_tree_boost",
+      "params": {
+        "numberOfTrees": 100,
+        "shrinkage": 0.05,
+        "samplingRate": 0.7,
+        "maxNodes": 32,
+        "seed": 13
+      }
+    },
+    "bands": [
+      "slope",
+      "hnd",
+      "log_upa",
+      "water_occ",
+      "built",
+      "lowland",
+      "alpha_score",
+      "pump_capacity_sum_norm",
+      "pump_catchment_area_sum_norm",
+      "pump_reservoir_capacity_sum_norm",
+      "pump_station_count_norm",
+      "sewer_sensor_count_norm"
+    ]
+  },
+  "validation": {
+    "summary": {
+      "accuracy_mean": 0.8390000000000001,
+      "accuracy_std": 0.05334439989352209,
+      "kappa_mean": 0.675,
+      "kappa_std": 0.10234744745229361,
+      "roc_auc_mean": 0.9109349999999999,
+      "roc_auc_std": 0.044449952896488,
+      "pr_auc_mean": 0.9008045250188111,
+      "pr_auc_std": 0.04537644223984461,
+      "average_precision_mean": 0.9008045250188111,
+      "average_precision_std": 0.04537644223984461,
+      "precision_mean": 0.843149783261104,
+      "precision_std": 0.05039195211397233,
+      "recall_mean": 0.833,
+      "recall_std": 0.07379024325749307,
+      "specificity_mean": 0.845,
+      "specificity_std": 0.05049752469181039,
+      "f1_mean": 0.8372734830843847,
+      "f1_std": 0.05712495732719519,
+      "balanced_accuracy_mean": 0.8390000000000001,
+      "balanced_accuracy_std": 0.053344399893522125,
+      "negative_predictive_value_mean": 0.8372774089942675,
+      "negative_predictive_value_std": 0.06328884070441591,
+      "false_positive_rate_mean": 0.15499999999999997,
+      "false_positive_rate_std": 0.05049752469181039,
+      "false_negative_rate_mean": 0.16699999999999998,
+      "false_negative_rate_std": 0.07379024325749307
+    },
+    "fold_results": [
+      {
+        "model": "GradientTreeBoost",
+        "model_family": "gradient_tree_boost",
+        "fold": 0,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_confusion": [
+          [
+            162,
+            38
+          ],
+          [
+            22,
+            178
+          ]
+        ],
+        "valid_accuracy": 0.85,
+        "valid_kappa": 0.7,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 178,
+          "true_negative": 162,
+          "false_positive": 38,
+          "false_negative": 22,
+          "accuracy": 0.85,
+          "precision": 0.8240740740740741,
+          "recall": 0.89,
+          "sensitivity": 0.89,
+          "specificity": 0.81,
+          "f1": 0.8557692307692307,
+          "balanced_accuracy": 0.8500000000000001,
+          "negative_predictive_value": 0.8804347826086957,
+          "false_positive_rate": 0.18999999999999995,
+          "false_negative_rate": 0.10999999999999999,
+          "roc_auc": 0.9232,
+          "pr_auc": 0.9156907433240271,
+          "average_precision": 0.9156907433240271
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.8709677419354839,
+          "top_10_percent": 0.5806451612903226,
+          "top_5_percent": 0.2903225806451613
+        }
+      },
+      {
+        "model": "GradientTreeBoost",
+        "model_family": "gradient_tree_boost",
+        "fold": 1,
+        "train_positive_count": 191,
+        "valid_positive_count": 66,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_confusion": [
+          [
+            163,
+            37
+          ],
+          [
+            56,
+            144
+          ]
+        ],
+        "valid_accuracy": 0.7675,
+        "valid_kappa": 0.5349999999999999,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 144,
+          "true_negative": 163,
+          "false_positive": 37,
+          "false_negative": 56,
+          "accuracy": 0.7675,
+          "precision": 0.7955801104972375,
+          "recall": 0.72,
+          "sensitivity": 0.72,
+          "specificity": 0.815,
+          "f1": 0.7559055118110236,
+          "balanced_accuracy": 0.7675,
+          "negative_predictive_value": 0.7442922374429224,
+          "false_positive_rate": 0.18500000000000005,
+          "false_negative_rate": 0.28,
+          "roc_auc": 0.857725,
+          "pr_auc": 0.8651518982721909,
+          "average_precision": 0.8651518982721909
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.7575757575757576,
+          "top_10_percent": 0.5454545454545454,
+          "top_5_percent": 0.3484848484848485
+        }
+      },
+      {
+        "model": "GradientTreeBoost",
+        "model_family": "gradient_tree_boost",
+        "fold": 2,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_confusion": [
+          [
+            180,
+            20
+          ],
+          [
+            32,
+            168
+          ]
+        ],
+        "valid_accuracy": 0.87,
+        "valid_kappa": 0.74,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 168,
+          "true_negative": 180,
+          "false_positive": 20,
+          "false_negative": 32,
+          "accuracy": 0.87,
+          "precision": 0.8936170212765957,
+          "recall": 0.84,
+          "sensitivity": 0.84,
+          "specificity": 0.9,
+          "f1": 0.8659793814432989,
+          "balanced_accuracy": 0.87,
+          "negative_predictive_value": 0.8490566037735849,
+          "false_positive_rate": 0.09999999999999998,
+          "false_negative_rate": 0.16000000000000003,
+          "roc_auc": 0.93805,
+          "pr_auc": 0.9219694549414953,
+          "average_precision": 0.9219694549414953
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.8,
+          "top_10_percent": 0.68,
+          "top_5_percent": 0.34
+        }
+      },
+      {
+        "model": "GradientTreeBoost",
+        "model_family": "gradient_tree_boost",
+        "fold": 3,
+        "train_positive_count": 197,
+        "valid_positive_count": 60,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_confusion": [
+          [
+            160,
+            40
+          ],
+          [
+            38,
+            162
+          ]
+        ],
+        "valid_accuracy": 0.805,
+        "valid_kappa": 0.6100000000000001,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 162,
+          "true_negative": 160,
+          "false_positive": 40,
+          "false_negative": 38,
+          "accuracy": 0.805,
+          "precision": 0.801980198019802,
+          "recall": 0.81,
+          "sensitivity": 0.81,
+          "specificity": 0.8,
+          "f1": 0.8059701492537314,
+          "balanced_accuracy": 0.805,
+          "negative_predictive_value": 0.8080808080808081,
+          "false_positive_rate": 0.19999999999999996,
+          "false_negative_rate": 0.18999999999999995,
+          "roc_auc": 0.872625,
+          "pr_auc": 0.8445011508652412,
+          "average_precision": 0.8445011508652412
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.8166666666666667,
+          "top_10_percent": 0.6166666666666667,
+          "top_5_percent": 0.43333333333333335
+        }
+      },
+      {
+        "model": "GradientTreeBoost",
+        "model_family": "gradient_tree_boost",
+        "fold": 4,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_confusion": [
+          [
+            177,
+            23
+          ],
+          [
+            19,
+            181
+          ]
+        ],
+        "valid_accuracy": 0.9025,
+        "valid_kappa": 0.79,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 181,
+          "true_negative": 180,
+          "false_positive": 20,
+          "false_negative": 19,
+          "accuracy": 0.9025,
+          "precision": 0.900497512437811,
+          "recall": 0.905,
+          "sensitivity": 0.905,
+          "specificity": 0.9,
+          "f1": 0.9027431421446384,
+          "balanced_accuracy": 0.9025000000000001,
+          "negative_predictive_value": 0.9045226130653267,
+          "false_positive_rate": 0.09999999999999998,
+          "false_negative_rate": 0.09499999999999997,
+          "roc_auc": 0.963075,
+          "pr_auc": 0.956709377691101,
+          "average_precision": 0.956709377691101
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.9,
+          "top_10_percent": 0.78,
+          "top_5_percent": 0.58
+        }
+      }
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "alpha_score",
+      "importance_mean": 0.17723411343475437,
+      "importance_std": 0.007748125556416181
+    },
+    {
+      "feature": "slope",
+      "importance_mean": 0.1341886999915955,
+      "importance_std": 0.019115676521360064
+    },
+    {
+      "feature": "hnd",
+      "importance_mean": 0.13418360516449396,
+      "importance_std": 0.02984691171088255
+    },
+    {
+      "feature": "log_upa",
+      "importance_mean": 0.12636457014326066,
+      "importance_std": 0.020018316269641324
+    },
+    {
+      "feature": "sewer_sensor_count_norm",
+      "importance_mean": 0.11124990739983183,
+      "importance_std": 0.01996087030838052
+    },
+    {
+      "feature": "built",
+      "importance_mean": 0.10249725669909851,
+      "importance_std": 0.013115040533819866
+    },
+    {
+      "feature": "lowland",
+      "importance_mean": 0.09962758651295023,
+      "importance_std": 0.034218355935247066
+    },
+    {
+      "feature": "pump_capacity_sum_norm",
+      "importance_mean": 0.07056775567269294,
+      "importance_std": 0.01010455903625403
+    },
+    {
+      "feature": "pump_reservoir_capacity_sum_norm",
+      "importance_mean": 0.01934199712104067,
+      "importance_std": 0.009993702082771795
+    },
+    {
+      "feature": "pump_catchment_area_sum_norm",
+      "importance_mean": 0.017898712908798523,
+      "importance_std": 0.005528921849776049
+    },
+    {
+      "feature": "pump_station_count_norm",
+      "importance_mean": 0.006845794951482796,
+      "importance_std": 0.002156248343078588
+    },
+    {
+      "feature": "water_occ",
+      "importance_mean": 0.0,
+      "importance_std": 0.0
+    }
+  ],
+  "topk": {
+    "cv_summary": [
+      {
+        "percentile": 80,
+        "top_percent": 20,
+        "evaluated_point_recall_mean": 0.8290420332355817,
+        "evaluated_point_recall_std": 0.05678207473795531,
+        "all_point_recall_mean": 0.8290420332355817,
+        "evaluated_point_lift_mean": 4.1122103508457855,
+        "hotspot_area_share_mean": 0.20160099422222263,
+        "hit_points_mean": 42.2,
+        "hotspot_area_km2_mean": 108.72661403167358
+      },
+      {
+        "percentile": 90,
+        "top_percent": 10,
+        "evaluated_point_recall_mean": 0.640553274682307,
+        "evaluated_point_recall_std": 0.09247263613298326,
+        "all_point_recall_mean": 0.640553274682307,
+        "evaluated_point_lift_mean": 6.398181503227944,
+        "hotspot_area_share_mean": 0.10008579616002648,
+        "hit_points_mean": 32.8,
+        "hotspot_area_km2_mean": 53.97785745614358
+      },
+      {
+        "percentile": 95,
+        "top_percent": 5,
+        "evaluated_point_recall_mean": 0.3984281524926686,
+        "evaluated_point_recall_std": 0.11377796880343942,
+        "all_point_recall_mean": 0.3984281524926686,
+        "evaluated_point_lift_mean": 8.22401416952811,
+        "hotspot_area_share_mean": 0.04847515900031868,
+        "hit_points_mean": 20.8,
+        "hotspot_area_km2_mean": 26.14342217450573
+      }
+    ]
+  },
+  "external_validation": {
+    "reference": {
+      "used": true,
+      "reference_count": 6,
+      "references": [
+        {
+          "used": true,
+          "source_type": "shp_zip_dir",
+          "source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_030",
+          "official_dataset": "행정구역별 30년 빈도 도시침수지도",
+          "flood_frequency": "30",
+          "flood_frequency_label": "30년",
+          "projection": "EPSG:5186",
+          "encoding": "cp949",
+          "zip_count": 14,
+          "shp_file_count": 14,
+          "feature_count": 57,
+          "chunk_count": 14,
+          "chunks": [
+            {
+              "source_zip": "CFM_SGG_11320_030.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11380_030.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11410_030.zip",
+              "feature_count": 4
+            },
+            {
+              "source_zip": "CFM_SGG_11440_030.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11500_030.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11530_030.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11545_030.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11560_030.zip",
+              "feature_count": 4
+            },
+            {
+              "source_zip": "CFM_SGG_11590_030.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11620_030.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11650_030.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11680_030.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11710_030.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11740_030.zip",
+              "feature_count": 4
+            }
+          ],
+          "validation_mode": "chunked_zip_sum",
+          "reason": null
+        },
+        {
+          "used": true,
+          "source_type": "shp_zip_dir",
+          "source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_050",
+          "official_dataset": "행정구역별 50년 빈도 도시침수지도",
+          "flood_frequency": "50",
+          "flood_frequency_label": "50년",
+          "projection": "EPSG:5186",
+          "encoding": "cp949",
+          "zip_count": 14,
+          "shp_file_count": 14,
+          "feature_count": 57,
+          "chunk_count": 14,
+          "chunks": [
+            {
+              "source_zip": "CFM_SGG_11320_050.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11380_050.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11410_050.zip",
+              "feature_count": 4
+            },
+            {
+              "source_zip": "CFM_SGG_11440_050.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11500_050.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11530_050.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11545_050.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11560_050.zip",
+              "feature_count": 4
+            },
+            {
+              "source_zip": "CFM_SGG_11590_050.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11620_050.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11650_050.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11680_050.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11710_050.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11740_050.zip",
+              "feature_count": 4
+            }
+          ],
+          "validation_mode": "chunked_zip_sum",
+          "reason": null
+        },
+        {
+          "used": true,
+          "source_type": "shp_zip_dir",
+          "source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_080",
+          "official_dataset": "행정구역별 80년 빈도 도시침수지도",
+          "flood_frequency": "80",
+          "flood_frequency_label": "80년",
+          "projection": "EPSG:5186",
+          "encoding": "cp949",
+          "zip_count": 12,
+          "shp_file_count": 12,
+          "feature_count": 40,
+          "chunk_count": 12,
+          "chunks": [
+            {
+              "source_zip": "CFM_SGG_11320_080.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11380_080.zip",
+              "feature_count": 1
+            },
+            {
+              "source_zip": "CFM_SGG_11440_080.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11500_080.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11530_080.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11545_080.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11560_080.zip",
+              "feature_count": 4
+            },
+            {
+              "source_zip": "CFM_SGG_11590_080.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11620_080.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11650_080.zip",
+              "feature_count": 1
+            },
+            {
+              "source_zip": "CFM_SGG_11710_080.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11740_080.zip",
+              "feature_count": 4
+            }
+          ],
+          "validation_mode": "chunked_zip_sum",
+          "reason": null
+        },
+        {
+          "used": true,
+          "source_type": "shp_zip_dir",
+          "source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_100",
+          "official_dataset": "행정구역별 100년 빈도 도시침수지도",
+          "flood_frequency": "100",
+          "flood_frequency_label": "100년",
+          "projection": "EPSG:5186",
+          "encoding": "cp949",
+          "zip_count": 14,
+          "shp_file_count": 14,
+          "feature_count": 57,
+          "chunk_count": 14,
+          "chunks": [
+            {
+              "source_zip": "CFM_SGG_11320_100.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11380_100.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11410_100.zip",
+              "feature_count": 4
+            },
+            {
+              "source_zip": "CFM_SGG_11440_100.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11500_100.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11530_100.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11545_100.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11560_100.zip",
+              "feature_count": 4
+            },
+            {
+              "source_zip": "CFM_SGG_11590_100.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11620_100.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11650_100.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11680_100.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11710_100.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11740_100.zip",
+              "feature_count": 4
+            }
+          ],
+          "validation_mode": "chunked_zip_sum",
+          "reason": null
+        },
+        {
+          "used": true,
+          "source_type": "shp_zip_dir",
+          "source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_500",
+          "official_dataset": "행정구역별 500년 빈도 도시침수지도",
+          "flood_frequency": "500",
+          "flood_frequency_label": "500년",
+          "projection": "EPSG:5186",
+          "encoding": "cp949",
+          "zip_count": 14,
+          "shp_file_count": 14,
+          "feature_count": 59,
+          "chunk_count": 14,
+          "chunks": [
+            {
+              "source_zip": "CFM_SGG_11320_500.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11380_500.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11410_500.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11440_500.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11500_500.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11530_500.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11545_500.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11560_500.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11590_500.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11620_500.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11650_500.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11680_500.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11710_500.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11740_500.zip",
+              "feature_count": 4
+            }
+          ],
+          "validation_mode": "chunked_zip_sum",
+          "reason": null
+        },
+        {
+          "used": true,
+          "source_type": "shp_zip_dir",
+          "source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_MAX",
+          "official_dataset": "행정구역별 기왕최대 도시침수지도",
+          "flood_frequency": "MAX",
+          "flood_frequency_label": "기왕최대",
+          "projection": "EPSG:5186",
+          "encoding": "cp949",
+          "zip_count": 14,
+          "shp_file_count": 14,
+          "feature_count": 56,
+          "chunk_count": 14,
+          "chunks": [
+            {
+              "source_zip": "CFM_SGG_11320_MAX.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11380_MAX.zip",
+              "feature_count": 4
+            },
+            {
+              "source_zip": "CFM_SGG_11410_MAX.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11440_MAX.zip",
+              "feature_count": 3
+            },
+            {
+              "source_zip": "CFM_SGG_11500_MAX.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11530_MAX.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11545_MAX.zip",
+              "feature_count": 2
+            },
+            {
+              "source_zip": "CFM_SGG_11560_MAX.zip",
+              "feature_count": 4
+            },
+            {
+              "source_zip": "CFM_SGG_11590_MAX.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11620_MAX.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11650_MAX.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11680_MAX.zip",
+              "feature_count": 5
+            },
+            {
+              "source_zip": "CFM_SGG_11710_MAX.zip",
+              "feature_count": 1
+            },
+            {
+              "source_zip": "CFM_SGG_11740_MAX.zip",
+              "feature_count": 4
+            }
+          ],
+          "validation_mode": "chunked_zip_sum",
+          "reason": null
+        }
+      ],
+      "reason": null
+    },
+    "overlap_metrics": [
+      {
+        "flood_frequency": "30",
+        "flood_frequency_label": "30년",
+        "official_dataset": "행정구역별 30년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_030",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 80,
+        "top_percent": 20,
+        "threshold": 0.5058126056087977,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 14.652610436940165,
+        "external_flood_area_share": 0.02680324580138266,
+        "hotspot_area_km2": 108.87903149871217,
+        "hotspot_area_share": 0.19916665746597742,
+        "overlap_area_km2": 8.70565940005198,
+        "hotspot_precision_vs_external": 0.07995717155286187,
+        "external_flood_recall": 0.5941370950601715,
+        "overlap_lift": 2.98311525944881,
+        "mean_probability_inside_external": 0.5768308019672742,
+        "mean_probability_outside_external": 0.2279716228733444,
+        "mean_probability_delta": 0.3488591790939298
+      },
+      {
+        "flood_frequency": "30",
+        "flood_frequency_label": "30년",
+        "official_dataset": "행정구역별 30년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_030",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 90,
+        "top_percent": 10,
+        "threshold": 0.8144624834429403,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 14.652610436940165,
+        "external_flood_area_share": 0.02680324580138266,
+        "hotspot_area_km2": 53.84485536045326,
+        "hotspot_area_share": 0.09849554791463531,
+        "overlap_area_km2": 5.96402476229431,
+        "hotspot_precision_vs_external": 0.11076313089466724,
+        "external_flood_recall": 0.407028139317662,
+        "overlap_lift": 4.132452155811423,
+        "mean_probability_inside_external": 0.5768308019672742,
+        "mean_probability_outside_external": 0.2279716228733444,
+        "mean_probability_delta": 0.3488591790939298
+      },
+      {
+        "flood_frequency": "30",
+        "flood_frequency_label": "30년",
+        "official_dataset": "행정구역별 30년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_030",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 95,
+        "top_percent": 5,
+        "threshold": 0.9317021298366449,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 14.652610436940165,
+        "external_flood_area_share": 0.02680324580138266,
+        "hotspot_area_km2": 26.566747750226494,
+        "hotspot_area_share": 0.04859714746100558,
+        "overlap_area_km2": 3.5440288224113723,
+        "hotspot_precision_vs_external": 0.13340092869971854,
+        "external_flood_recall": 0.24187013212858302,
+        "overlap_lift": 4.977043813583091,
+        "mean_probability_inside_external": 0.5768308019672742,
+        "mean_probability_outside_external": 0.2279716228733444,
+        "mean_probability_delta": 0.3488591790939298
+      },
+      {
+        "flood_frequency": "50",
+        "flood_frequency_label": "50년",
+        "official_dataset": "행정구역별 50년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_050",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 80,
+        "top_percent": 20,
+        "threshold": 0.5058787382626468,
+        "analysis_area_km2": 546.6729867538766,
+        "external_flood_area_km2": 16.044777805320052,
+        "external_flood_area_share": 0.029349863984670863,
+        "hotspot_area_km2": 109.06653215943746,
+        "hotspot_area_share": 0.19950964251420283,
+        "overlap_area_km2": 9.58455487965565,
+        "hotspot_precision_vs_external": 0.08787805653932956,
+        "external_flood_recall": 0.5973628925218053,
+        "overlap_lift": 2.9941554954131093,
+        "mean_probability_inside_external": 0.5808605030031051,
+        "mean_probability_outside_external": 0.22492976408855916,
+        "mean_probability_delta": 0.35593073891454596
+      },
+      {
+        "flood_frequency": "50",
+        "flood_frequency_label": "50년",
+        "official_dataset": "행정구역별 50년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_050",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 90,
+        "top_percent": 10,
+        "threshold": 0.8144966722761631,
+        "analysis_area_km2": 546.6729867538766,
+        "external_flood_area_km2": 16.044777805320052,
+        "external_flood_area_share": 0.029349863984670863,
+        "hotspot_area_km2": 54.03475558172208,
+        "hotspot_area_share": 0.09884292235213304,
+        "overlap_area_km2": 6.635496287860031,
+        "hotspot_precision_vs_external": 0.12280052378185585,
+        "external_flood_recall": 0.41356112053230576,
+        "overlap_lift": 4.184023607264188,
+        "mean_probability_inside_external": 0.5808605030031051,
+        "mean_probability_outside_external": 0.22492976408855916,
+        "mean_probability_delta": 0.35593073891454596
+      },
+      {
+        "flood_frequency": "50",
+        "flood_frequency_label": "50년",
+        "official_dataset": "행정구역별 50년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_050",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 95,
+        "top_percent": 5,
+        "threshold": 0.9316502854551133,
+        "analysis_area_km2": 546.6729867538766,
+        "external_flood_area_km2": 16.044777805320052,
+        "external_flood_area_share": 0.029349863984670863,
+        "hotspot_area_km2": 27.26191908035361,
+        "hotspot_area_share": 0.049868787631585476,
+        "overlap_area_km2": 3.9474818251533983,
+        "hotspot_precision_vs_external": 0.14479838391121055,
+        "external_flood_recall": 0.24602907394856605,
+        "overlap_lift": 4.933528277570121,
+        "mean_probability_inside_external": 0.5808605030031051,
+        "mean_probability_outside_external": 0.22492976408855916,
+        "mean_probability_delta": 0.35593073891454596
+      },
+      {
+        "flood_frequency": "80",
+        "flood_frequency_label": "80년",
+        "official_dataset": "행정구역별 80년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_080",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 12,
+        "percentile": 80,
+        "top_percent": 20,
+        "threshold": 0.5058126056087977,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 7.832317113352474,
+        "external_flood_area_share": 0.014327243714492779,
+        "hotspot_area_km2": 109.0757932552016,
+        "hotspot_area_share": 0.1995265833471844,
+        "overlap_area_km2": 5.633611768716946,
+        "hotspot_precision_vs_external": 0.051648597737319606,
+        "external_flood_recall": 0.7192777931721902,
+        "overlap_lift": 3.6049221166716294,
+        "mean_probability_inside_external": 0.6763825564755799,
+        "mean_probability_outside_external": 0.2309402202893748,
+        "mean_probability_delta": 0.4454423361862051
+      },
+      {
+        "flood_frequency": "80",
+        "flood_frequency_label": "80년",
+        "official_dataset": "행정구역별 80년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_080",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 12,
+        "percentile": 90,
+        "top_percent": 10,
+        "threshold": 0.8144624834429403,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 7.832317113352474,
+        "external_flood_area_share": 0.014327243714492779,
+        "hotspot_area_km2": 54.042594994991134,
+        "hotspot_area_share": 0.09885726257647008,
+        "overlap_area_km2": 3.9968746347003616,
+        "hotspot_precision_vs_external": 0.07395785926028917,
+        "external_flood_recall": 0.5103055171101947,
+        "overlap_lift": 5.162043777162582,
+        "mean_probability_inside_external": 0.6763825564755799,
+        "mean_probability_outside_external": 0.2309402202893748,
+        "mean_probability_delta": 0.4454423361862051
+      },
+      {
+        "flood_frequency": "80",
+        "flood_frequency_label": "80년",
+        "official_dataset": "행정구역별 80년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_080",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 12,
+        "percentile": 95,
+        "top_percent": 5,
+        "threshold": 0.9317021298366449,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 7.832317113352474,
+        "external_flood_area_share": 0.014327243714492779,
+        "hotspot_area_km2": 27.245532693451757,
+        "hotspot_area_share": 0.049838812880136425,
+        "overlap_area_km2": 2.4022330439765938,
+        "hotspot_precision_vs_external": 0.08816979543049826,
+        "external_flood_recall": 0.3067078374394833,
+        "overlap_lift": 6.153995645464574,
+        "mean_probability_inside_external": 0.6763825564755799,
+        "mean_probability_outside_external": 0.2309402202893748,
+        "mean_probability_delta": 0.4454423361862051
+      },
+      {
+        "flood_frequency": "100",
+        "flood_frequency_label": "100년",
+        "official_dataset": "행정구역별 100년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_100",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 80,
+        "top_percent": 20,
+        "threshold": 0.5058787382626468,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 18.35583531427147,
+        "external_flood_area_share": 0.03357735933371744,
+        "hotspot_area_km2": 108.86478484783323,
+        "hotspot_area_share": 0.1991405968205383,
+        "overlap_area_km2": 11.053686948716596,
+        "hotspot_precision_vs_external": 0.10153592793268264,
+        "external_flood_recall": 0.6021892634939076,
+        "overlap_lift": 3.0239402367393176,
+        "mean_probability_inside_external": 0.5849161304942757,
+        "mean_probability_outside_external": 0.2252453874185901,
+        "mean_probability_delta": 0.3596707430756856
+      },
+      {
+        "flood_frequency": "100",
+        "flood_frequency_label": "100년",
+        "official_dataset": "행정구역별 100년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_100",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 90,
+        "top_percent": 10,
+        "threshold": 0.8144966722761631,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 18.35583531427147,
+        "external_flood_area_share": 0.03357735933371744,
+        "hotspot_area_km2": 53.838444912699345,
+        "hotspot_area_share": 0.09848382162138644,
+        "overlap_area_km2": 7.602786344408478,
+        "hotspot_precision_vs_external": 0.14121482068690178,
+        "external_flood_recall": 0.41418906926547716,
+        "overlap_lift": 4.205655938675852,
+        "mean_probability_inside_external": 0.5849161304942757,
+        "mean_probability_outside_external": 0.2252453874185901,
+        "mean_probability_delta": 0.3596707430756856
+      },
+      {
+        "flood_frequency": "100",
+        "flood_frequency_label": "100년",
+        "official_dataset": "행정구역별 100년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_100",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 95,
+        "top_percent": 5,
+        "threshold": 0.9316502854551133,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 18.35583531427147,
+        "external_flood_area_share": 0.03357735933371744,
+        "hotspot_area_km2": 26.578860754987236,
+        "hotspot_area_share": 0.048619305140375595,
+        "overlap_area_km2": 4.541242899945892,
+        "hotspot_precision_vs_external": 0.1708592005431902,
+        "external_flood_recall": 0.2474005035562246,
+        "overlap_lift": 5.0885240511340095,
+        "mean_probability_inside_external": 0.5849161304942757,
+        "mean_probability_outside_external": 0.2252453874185901,
+        "mean_probability_delta": 0.3596707430756856
+      },
+      {
+        "flood_frequency": "500",
+        "flood_frequency_label": "500년",
+        "official_dataset": "행정구역별 500년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_500",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 80,
+        "top_percent": 20,
+        "threshold": 0.5058126056087977,
+        "analysis_area_km2": 546.6729867538766,
+        "external_flood_area_km2": 21.003099340312957,
+        "external_flood_area_share": 0.03841985949411652,
+        "hotspot_area_km2": 109.0757932552016,
+        "hotspot_area_share": 0.19952658334718443,
+        "overlap_area_km2": 12.879854580727361,
+        "hotspot_precision_vs_external": 0.11808169527213727,
+        "external_flood_recall": 0.613235902570151,
+        "overlap_lift": 3.0734546358822548,
+        "mean_probability_inside_external": 0.593821945237655,
+        "mean_probability_outside_external": 0.2210546143884408,
+        "mean_probability_delta": 0.3727673308492142
+      },
+      {
+        "flood_frequency": "500",
+        "flood_frequency_label": "500년",
+        "official_dataset": "행정구역별 500년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_500",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 90,
+        "top_percent": 10,
+        "threshold": 0.8144624834429403,
+        "analysis_area_km2": 546.6729867538766,
+        "external_flood_area_km2": 21.003099340312957,
+        "external_flood_area_share": 0.03841985949411652,
+        "hotspot_area_km2": 54.042594994991134,
+        "hotspot_area_share": 0.0988572625764701,
+        "overlap_area_km2": 8.852252988659266,
+        "hotspot_precision_vs_external": 0.16380140497471904,
+        "external_flood_recall": 0.4214736523037063,
+        "overlap_lift": 4.263456637570552,
+        "mean_probability_inside_external": 0.593821945237655,
+        "mean_probability_outside_external": 0.2210546143884408,
+        "mean_probability_delta": 0.3727673308492142
+      },
+      {
+        "flood_frequency": "500",
+        "flood_frequency_label": "500년",
+        "official_dataset": "행정구역별 500년 빈도 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_500",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 95,
+        "top_percent": 5,
+        "threshold": 0.9317021298366449,
+        "analysis_area_km2": 546.6729867538766,
+        "external_flood_area_km2": 21.003099340312957,
+        "external_flood_area_share": 0.03841985949411652,
+        "hotspot_area_km2": 27.245532693451757,
+        "hotspot_area_share": 0.04983881288013643,
+        "overlap_area_km2": 5.251104544926955,
+        "hotspot_precision_vs_external": 0.19273268039971247,
+        "external_flood_recall": 0.2500156981521333,
+        "overlap_lift": 5.016485821069358,
+        "mean_probability_inside_external": 0.593821945237655,
+        "mean_probability_outside_external": 0.2210546143884408,
+        "mean_probability_delta": 0.3727673308492142
+      },
+      {
+        "flood_frequency": "MAX",
+        "flood_frequency_label": "기왕최대",
+        "official_dataset": "행정구역별 기왕최대 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_MAX",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 80,
+        "top_percent": 20,
+        "threshold": 0.5058126056087977,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 10.197189717189474,
+        "external_flood_area_share": 0.01865318017219032,
+        "hotspot_area_km2": 108.87903149871217,
+        "hotspot_area_share": 0.19916665746597742,
+        "overlap_area_km2": 6.169896348731081,
+        "hotspot_precision_vs_external": 0.056667443343340715,
+        "external_flood_recall": 0.6050585033571008,
+        "overlap_lift": 3.0379507848117586,
+        "mean_probability_inside_external": 0.5902949971545229,
+        "mean_probability_outside_external": 0.23061296749676224,
+        "mean_probability_delta": 0.3596820296577607
+      },
+      {
+        "flood_frequency": "MAX",
+        "flood_frequency_label": "기왕최대",
+        "official_dataset": "행정구역별 기왕최대 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_MAX",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 90,
+        "top_percent": 10,
+        "threshold": 0.8144624834429403,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 10.197189717189474,
+        "external_flood_area_share": 0.01865318017219032,
+        "hotspot_area_km2": 53.84485536045326,
+        "hotspot_area_share": 0.09849554791463531,
+        "overlap_area_km2": 4.365148774310535,
+        "hotspot_precision_vs_external": 0.08106900362326074,
+        "external_flood_recall": 0.42807370416499885,
+        "overlap_lift": 4.346122370282201,
+        "mean_probability_inside_external": 0.5902949971545229,
+        "mean_probability_outside_external": 0.23061296749676224,
+        "mean_probability_delta": 0.3596820296577607
+      },
+      {
+        "flood_frequency": "MAX",
+        "flood_frequency_label": "기왕최대",
+        "official_dataset": "행정구역별 기왕최대 도시침수지도",
+        "reference_source_type": "shp_zip_dir",
+        "reference_source": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency/freq_MAX",
+        "external_validation_mode": "chunked_zip_sum",
+        "external_validation_chunk_count": 14,
+        "percentile": 95,
+        "top_percent": 5,
+        "threshold": 0.9317021298366449,
+        "analysis_area_km2": 546.6729867538767,
+        "external_flood_area_km2": 10.197189717189474,
+        "external_flood_area_share": 0.01865318017219032,
+        "hotspot_area_km2": 26.566747750226494,
+        "hotspot_area_share": 0.04859714746100558,
+        "overlap_area_km2": 2.6736660570810167,
+        "hotspot_precision_vs_external": 0.10063956951818546,
+        "external_flood_recall": 0.26219636304049526,
+        "overlap_lift": 5.3953035669610445,
+        "mean_probability_inside_external": 0.5902949971545229,
+        "mean_probability_outside_external": 0.23061296749676224,
+        "mean_probability_delta": 0.3596820296577607
+      }
+    ]
+  },
+  "outputs": {
+    "output_dir": "/Users/cho/alpha_earth/seoul_flood/outputs/run_analysis_final_external",
+    "metrics_json": "/Users/cho/alpha_earth/seoul_flood/outputs/run_analysis_final_external/metrics.json",
+    "cv_results_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/run_analysis_final_external/cv_results.csv",
+    "feature_importance_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/run_analysis_final_external/feature_importance.csv",
+    "topk_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/run_analysis_final_external/topk_summary.csv",
+    "external_validation_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/run_analysis_final_external/external_validation.csv"
+  }
+}

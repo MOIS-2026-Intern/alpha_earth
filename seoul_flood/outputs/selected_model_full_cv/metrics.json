@@ -1,0 +1,1847 @@
+{
+  "config": {
+    "year": 2024,
+    "analysis_scale": 30,
+    "boundary_buffer_m": 0,
+    "reference_point_limit": 0,
+    "positive_sample_points": 200,
+    "negative_points": 200,
+    "positive_buffer_m": 60,
+    "negative_buffer_m": 300,
+    "hotspot_percentile": 95,
+    "hotspot_eval_percentiles": [
+      80,
+      90,
+      95
+    ],
+    "risk_grade_percentiles": [
+      50,
+      75,
+      90,
+      95
+    ],
+    "spatial_block_degrees": 0.015,
+    "spatial_folds": 5,
+    "validation_fold": 0,
+    "evaluation_folds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "run_full_cv": true,
+    "run_feature_ablations": false,
+    "run_water_feature_ablations": false,
+    "run_drainage_ablation": false,
+    "run_alpha_ablation": false,
+    "run_hotspot_eval": true,
+    "hotspot_eval_in_cv": true,
+    "generate_map_outputs": false,
+    "run_buffer_sensitivity": false,
+    "run_model_comparison": false,
+    "model_comparison_names": [
+      "RandomForest",
+      "GradientTreeBoost",
+      "XGBoost",
+      "LightGBM",
+      "CART",
+      "KNN"
+    ],
+    "run_external_validation": false,
+    "official_flood_geojson": "",
+    "official_flood_ee_asset": "",
+    "official_flood_shp_freq_root_dir": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood_by_frequency",
+    "official_flood_shp_zip_dir": "/Users/cho/alpha_earth/seoul_flood/source/official_city_flood",
+    "official_flood_shp_proj": "EPSG:5186",
+    "official_flood_shp_simplify_m": 30.0,
+    "external_validation_percentiles": [
+      80,
+      90,
+      95
+    ],
+    "water_distance_pixels": 256,
+    "drainage_feature_mode": "gu_stats",
+    "drainage_infra_enabled": false,
+    "drainage_infra_radius_m": 500,
+    "drainage_infra_min_active_points": 500,
+    "drainage_gu_stats_enabled": true,
+    "drainage_gu_stats_min_districts": 5,
+    "lid_preconsult_zip": "/Users/cho/alpha_earth/seoul_flood/source/SP_BNLC_AS.zip",
+    "rainwater_use_zip": "/Users/cho/alpha_earth/seoul_flood/source/SP_LGRC_AS.zip",
+    "pump_station_csv": "/Users/cho/alpha_earth/seoul_flood/source/seoul_pump_stations.csv",
+    "sewer_sensor_gu_stats_csv": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_sensor_gu_stats.csv",
+    "sewer_level_sensor_csv": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_202605.csv",
+    "risk_grade_palette": [
+      "#2b83ba",
+      "#abdda4",
+      "#ffffbf",
+      "#fdae61",
+      "#d7191c"
+    ],
+    "risk_grade_names": [
+      "Very low",
+      "Low",
+      "Moderate",
+      "High",
+      "Very high"
+    ]
+  },
+  "data": {
+    "reference_geojson": "/Users/cho/alpha_earth/seoul_flood/source/seoul_flood_reference_points.geojson",
+    "reference_points_total": 300,
+    "reference_points_in_analysis_boundary": 257,
+    "reference_points_excluded": 43,
+    "positive_fold_histogram": {
+      "0": 31,
+      "1": 66,
+      "2": 50,
+      "3": 60,
+      "4": 50
+    },
+    "selected_train_positive_count": 226,
+    "selected_validation_positive_count": 31,
+    "drainage_infra": [
+      {
+        "dataset": "drainage_infra",
+        "used": false,
+        "reason": "disabled"
+      },
+      {
+        "dataset": "pump_station_gu_stats",
+        "path": "/Users/cho/alpha_earth/seoul_flood/source/seoul_pump_stations.csv",
+        "exists": true,
+        "raw_records": 96,
+        "unique_stations": 57,
+        "district_count": 16,
+        "used": true,
+        "reason": null,
+        "encoding": "cp949",
+        "skipped_rows": 5,
+        "raw_stats_by_gu": {
+          "금천구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 23.5,
+            "pump_catchment_area_sum": 0.8,
+            "pump_reservoir_capacity_sum": 7647.0
+          },
+          "영등포구": {
+            "pump_station_count": 4.0,
+            "pump_capacity_sum": 115.70000000000002,
+            "pump_catchment_area_sum": 5.0,
+            "pump_reservoir_capacity_sum": 38050.0
+          },
+          "관악구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 16.7,
+            "pump_catchment_area_sum": 1.0,
+            "pump_reservoir_capacity_sum": 8400.0
+          },
+          "구로구": {
+            "pump_station_count": 6.0,
+            "pump_capacity_sum": 332.5,
+            "pump_catchment_area_sum": 57.0,
+            "pump_reservoir_capacity_sum": 192844.0
+          },
+          "강동구": {
+            "pump_station_count": 3.0,
+            "pump_capacity_sum": 240.2,
+            "pump_catchment_area_sum": 21.6,
+            "pump_reservoir_capacity_sum": 367000.0
+          },
+          "송파구": {
+            "pump_station_count": 6.0,
+            "pump_capacity_sum": 243.7,
+            "pump_catchment_area_sum": 32.9,
+            "pump_reservoir_capacity_sum": 1998600.0
+          },
+          "강남구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 52.0,
+            "pump_catchment_area_sum": 5.8,
+            "pump_reservoir_capacity_sum": 216000.0
+          },
+          "서초구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 11.7,
+            "pump_catchment_area_sum": 0.6,
+            "pump_reservoir_capacity_sum": 3520.0
+          },
+          "마포구": {
+            "pump_station_count": 3.0,
+            "pump_capacity_sum": 34.8,
+            "pump_catchment_area_sum": 1.5,
+            "pump_reservoir_capacity_sum": 8350.0
+          },
+          "은평구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 5.8,
+            "pump_catchment_area_sum": 0.2,
+            "pump_reservoir_capacity_sum": 1500.0
+          },
+          "성동구": {
+            "pump_station_count": 9.0,
+            "pump_capacity_sum": 13408.6,
+            "pump_catchment_area_sum": 17.6,
+            "pump_reservoir_capacity_sum": 324803.0
+          },
+          "동대문구": {
+            "pump_station_count": 13.0,
+            "pump_capacity_sum": 7231.0,
+            "pump_catchment_area_sum": 10.6,
+            "pump_reservoir_capacity_sum": 123832.0
+          },
+          "중랑구": {
+            "pump_station_count": 4.0,
+            "pump_capacity_sum": 6087.7,
+            "pump_catchment_area_sum": 7.7,
+            "pump_reservoir_capacity_sum": 121360.0
+          },
+          "성북구": {
+            "pump_station_count": 2.0,
+            "pump_capacity_sum": 13.7,
+            "pump_catchment_area_sum": 0.6,
+            "pump_reservoir_capacity_sum": 4400.0
+          },
+          "노원구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 9.9,
+            "pump_catchment_area_sum": 0.7,
+            "pump_reservoir_capacity_sum": 4500.0
+          },
+          "광진구": {
+            "pump_station_count": 1.0,
+            "pump_capacity_sum": 2330.0,
+            "pump_catchment_area_sum": 2.0,
+            "pump_reservoir_capacity_sum": 7175.0
+          }
+        },
+        "max_by_metric": {
+          "pump_station_count": 13.0,
+          "pump_capacity_sum": 13408.6,
+          "pump_catchment_area_sum": 57.0,
+          "pump_reservoir_capacity_sum": 1998600.0
+        },
+        "image_summary": {
+          "dataset": "pump_station_gu_stats",
+          "used": true,
+          "district_count": 16,
+          "band_names": [
+            "pump_capacity_sum_norm",
+            "pump_catchment_area_sum_norm",
+            "pump_reservoir_capacity_sum_norm",
+            "pump_station_count_norm"
+          ],
+          "matched_adm2_count": 16,
+          "reason": null,
+          "mapped_districts": [
+            "강남구",
+            "강동구",
+            "관악구",
+            "광진구",
+            "구로구",
+            "금천구",
+            "노원구",
+            "동대문구",
+            "마포구",
+            "서초구",
+            "성동구",
+            "성북구",
+            "송파구",
+            "영등포구",
+            "은평구",
+            "중랑구"
+          ],
+          "unmapped_districts": []
+        }
+      },
+      {
+        "dataset": "sewer_level_sensor_gu_stats",
+        "summary_path": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_sensor_gu_stats.csv",
+        "raw_path": "/Users/cho/alpha_earth/seoul_flood/source/sewer_level_202605.csv",
+        "summary_exists": true,
+        "raw_exists": true,
+        "district_count": 25,
+        "used": true,
+        "reason": null,
+        "encoding": "utf-8-sig",
+        "source": "summary_csv",
+        "raw_stats_by_gu": {
+          "강남구": {
+            "sewer_sensor_count": 116.0
+          },
+          "강동구": {
+            "sewer_sensor_count": 24.0
+          },
+          "강북구": {
+            "sewer_sensor_count": 3.0
+          },
+          "강서구": {
+            "sewer_sensor_count": 20.0
+          },
+          "관악구": {
+            "sewer_sensor_count": 41.0
+          },
+          "광진구": {
+            "sewer_sensor_count": 36.0
+          },
+          "구로구": {
+            "sewer_sensor_count": 35.0
+          },
+          "금천구": {
+            "sewer_sensor_count": 20.0
+          },
+          "노원구": {
+            "sewer_sensor_count": 11.0
+          },
+          "도봉구": {
+            "sewer_sensor_count": 10.0
+          },
+          "동대문구": {
+            "sewer_sensor_count": 56.0
+          },
+          "동작구": {
+            "sewer_sensor_count": 46.0
+          },
+          "마포구": {
+            "sewer_sensor_count": 20.0
+          },
+          "서대문구": {
+            "sewer_sensor_count": 15.0
+          },
+          "서초구": {
+            "sewer_sensor_count": 65.0
+          },
+          "성동구": {
+            "sewer_sensor_count": 11.0
+          },
+          "성북구": {
+            "sewer_sensor_count": 7.0
+          },
+          "송파구": {
+            "sewer_sensor_count": 22.0
+          },
+          "양천구": {
+            "sewer_sensor_count": 13.0
+          },
+          "영등포구": {
+            "sewer_sensor_count": 18.0
+          },
+          "용산구": {
+            "sewer_sensor_count": 9.0
+          },
+          "은평구": {
+            "sewer_sensor_count": 14.0
+          },
+          "종로구": {
+            "sewer_sensor_count": 5.0
+          },
+          "중구": {
+            "sewer_sensor_count": 6.0
+          },
+          "중랑구": {
+            "sewer_sensor_count": 13.0
+          }
+        },
+        "max_by_metric": {
+          "sewer_sensor_count": 116.0
+        },
+        "image_summary": {
+          "dataset": "sewer_level_sensor_gu_stats",
+          "used": true,
+          "district_count": 25,
+          "band_names": [
+            "sewer_sensor_count_norm"
+          ],
+          "matched_adm2_count": 25,
+          "reason": null,
+          "mapped_districts": [
+            "강남구",
+            "강동구",
+            "강북구",
+            "강서구",
+            "관악구",
+            "광진구",
+            "구로구",
+            "금천구",
+            "노원구",
+            "도봉구",
+            "동대문구",
+            "동작구",
+            "마포구",
+            "서대문구",
+            "서초구",
+            "성동구",
+            "성북구",
+            "송파구",
+            "양천구",
+            "영등포구",
+            "용산구",
+            "은평구",
+            "종로구",
+            "중구",
+            "중랑구"
+          ],
+          "unmapped_districts": []
+        }
+      }
+    ],
+    "drainage_feature_groups": {
+      "point_density": [],
+      "gu_stats": [
+        "pump_capacity_sum_norm",
+        "pump_catchment_area_sum_norm",
+        "pump_reservoir_capacity_sum_norm",
+        "pump_station_count_norm",
+        "sewer_sensor_count_norm"
+      ],
+      "all": [
+        "pump_capacity_sum_norm",
+        "pump_catchment_area_sum_norm",
+        "pump_reservoir_capacity_sum_norm",
+        "pump_station_count_norm",
+        "sewer_sensor_count_norm"
+      ]
+    }
+  },
+  "selected_model": {
+    "name": "Hybrid-plus-drainage-gu-stats",
+    "classifier": "GradientTreeBoost",
+    "classifier_params": {
+      "numberOfTrees": 100,
+      "shrinkage": 0.05,
+      "samplingRate": 0.7,
+      "maxNodes": 32,
+      "seed": 13
+    },
+    "bands": [
+      "slope",
+      "hnd",
+      "log_upa",
+      "water_occ",
+      "built",
+      "lowland",
+      "alpha_score",
+      "pump_capacity_sum_norm",
+      "pump_catchment_area_sum_norm",
+      "pump_reservoir_capacity_sum_norm",
+      "pump_station_count_norm",
+      "sewer_sensor_count_norm"
+    ],
+    "validation_fold": 0,
+    "selected_fold_accuracy": 0.85,
+    "selected_fold_kappa": 0.7,
+    "selected_fold_metrics": {
+      "threshold": 0.5,
+      "sample_count": 400,
+      "positive_count": 200,
+      "negative_count": 200,
+      "true_positive": 178,
+      "true_negative": 165,
+      "false_positive": 35,
+      "false_negative": 22,
+      "accuracy": 0.8575,
+      "precision": 0.8356807511737089,
+      "recall": 0.89,
+      "sensitivity": 0.89,
+      "specificity": 0.825,
+      "f1": 0.8619854721549637,
+      "balanced_accuracy": 0.8574999999999999,
+      "negative_predictive_value": 0.8823529411764706,
+      "false_positive_rate": 0.17500000000000004,
+      "false_negative_rate": 0.10999999999999999,
+      "roc_auc": 0.916075,
+      "pr_auc": 0.9062408080140102,
+      "average_precision": 0.9062408080140102
+    },
+    "cv_summary": {
+      "accuracy_mean": 0.8390000000000001,
+      "accuracy_std": 0.05334439989352209,
+      "kappa_mean": 0.681,
+      "kappa_std": 0.10766847263707235,
+      "roc_auc_mean": 0.911035,
+      "roc_auc_std": 0.0445267005570815,
+      "pr_auc_mean": 0.900876343476692,
+      "pr_auc_std": 0.04541857969345726,
+      "average_precision_mean": 0.900876343476692,
+      "average_precision_std": 0.04541857969345726,
+      "precision_mean": 0.8415097123391183,
+      "precision_std": 0.0484342170066497,
+      "recall_mean": 0.835,
+      "recall_std": 0.07416198487095664,
+      "specificity_mean": 0.843,
+      "specificity_std": 0.047906158268013935,
+      "f1_mean": 0.8375469945508268,
+      "f1_std": 0.05729976678080349,
+      "balanced_accuracy_mean": 0.8390000000000001,
+      "balanced_accuracy_std": 0.053344399893522125,
+      "negative_predictive_value_mean": 0.8386199343933967,
+      "negative_predictive_value_std": 0.06367121720508236,
+      "false_positive_rate_mean": 0.15699999999999997,
+      "false_positive_rate_std": 0.047906158268013935,
+      "false_negative_rate_mean": 0.16499999999999998,
+      "false_negative_rate_std": 0.07416198487095664
+    },
+    "cv_feature_importance": [
+      {
+        "feature": "alpha_score",
+        "importance_mean": 0.17731273292866767,
+        "importance_std": 0.007920495600421898
+      },
+      {
+        "feature": "slope",
+        "importance_mean": 0.13430879457782458,
+        "importance_std": 0.01904914016698686
+      },
+      {
+        "feature": "hnd",
+        "importance_mean": 0.13402778118865624,
+        "importance_std": 0.02978467901421444
+      },
+      {
+        "feature": "log_upa",
+        "importance_mean": 0.1265921898316896,
+        "importance_std": 0.01973477798244061
+      },
+      {
+        "feature": "sewer_sensor_count_norm",
+        "importance_mean": 0.11119670558347086,
+        "importance_std": 0.019936802994010232
+      },
+      {
+        "feature": "built",
+        "importance_mean": 0.10245501375733208,
+        "importance_std": 0.013070560305386256
+      },
+      {
+        "feature": "lowland",
+        "importance_mean": 0.09950193184243943,
+        "importance_std": 0.034199802902132245
+      },
+      {
+        "feature": "pump_capacity_sum_norm",
+        "importance_mean": 0.07054340290282989,
+        "importance_std": 0.009843459297540555
+      },
+      {
+        "feature": "pump_reservoir_capacity_sum_norm",
+        "importance_mean": 0.019144177637775088,
+        "importance_std": 0.010255128319016654
+      },
+      {
+        "feature": "pump_catchment_area_sum_norm",
+        "importance_mean": 0.01797584440329532,
+        "importance_std": 0.0053743454016554155
+      },
+      {
+        "feature": "pump_station_count_norm",
+        "importance_mean": 0.006941425346019251,
+        "importance_std": 0.0023313144934833216
+      },
+      {
+        "feature": "water_occ",
+        "importance_mean": 0.0,
+        "importance_std": 0.0
+      }
+    ],
+    "cv_hotspot_summary": [
+      {
+        "percentile": 80,
+        "top_percent": 20,
+        "evaluated_point_recall_mean": 0.8330420332355816,
+        "evaluated_point_recall_std": 0.06335442904162997,
+        "all_point_recall_mean": 0.8330420332355816,
+        "evaluated_point_lift_mean": 4.129017621123064,
+        "hotspot_area_share_mean": 0.20173939848583416,
+        "hit_points_mean": 42.4,
+        "hotspot_area_km2_mean": 108.80125764644387
+      },
+      {
+        "percentile": 90,
+        "top_percent": 10,
+        "evaluated_point_recall_mean": 0.6261016617790811,
+        "evaluated_point_recall_std": 0.08903706030439906,
+        "all_point_recall_mean": 0.6261016617790811,
+        "evaluated_point_lift_mean": 6.244419477601001,
+        "hotspot_area_share_mean": 0.10025175768728256,
+        "hit_points_mean": 32.2,
+        "hotspot_area_km2_mean": 54.067363140317866
+      },
+      {
+        "percentile": 95,
+        "top_percent": 5,
+        "evaluated_point_recall_mean": 0.4064281524926686,
+        "evaluated_point_recall_std": 0.14105624103591824,
+        "all_point_recall_mean": 0.4064281524926686,
+        "evaluated_point_lift_mean": 8.266294468037753,
+        "hotspot_area_share_mean": 0.049128677538459495,
+        "hit_points_mean": 21.2,
+        "hotspot_area_km2_mean": 26.495875088406827
+      }
+    ],
+    "cv_fold_results": [
+      {
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            165,
+            35
+          ],
+          [
+            22,
+            178
+          ]
+        ],
+        "valid_accuracy": 0.85,
+        "valid_kappa": 0.7150000000000001,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 178,
+          "true_negative": 162,
+          "false_positive": 38,
+          "false_negative": 22,
+          "accuracy": 0.85,
+          "precision": 0.8240740740740741,
+          "recall": 0.89,
+          "sensitivity": 0.89,
+          "specificity": 0.81,
+          "f1": 0.8557692307692307,
+          "balanced_accuracy": 0.8500000000000001,
+          "negative_predictive_value": 0.8804347826086957,
+          "false_positive_rate": 0.18999999999999995,
+          "false_negative_rate": 0.10999999999999999,
+          "roc_auc": 0.9232,
+          "pr_auc": 0.9156907433240271,
+          "average_precision": 0.9156907433240271
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.8709677419354839,
+          "top_10_percent": 0.5483870967741935,
+          "top_5_percent": 0.2903225806451613
+        }
+      },
+      {
+        "fold": 1,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 191,
+        "valid_positive_count": 66,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            163,
+            37
+          ],
+          [
+            56,
+            144
+          ]
+        ],
+        "valid_accuracy": 0.7675,
+        "valid_kappa": 0.5349999999999999,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 144,
+          "true_negative": 163,
+          "false_positive": 37,
+          "false_negative": 56,
+          "accuracy": 0.7675,
+          "precision": 0.7955801104972375,
+          "recall": 0.72,
+          "sensitivity": 0.72,
+          "specificity": 0.815,
+          "f1": 0.7559055118110236,
+          "balanced_accuracy": 0.7675,
+          "negative_predictive_value": 0.7442922374429224,
+          "false_positive_rate": 0.18500000000000005,
+          "false_negative_rate": 0.28,
+          "roc_auc": 0.857725,
+          "pr_auc": 0.8651518982721909,
+          "average_precision": 0.8651518982721909
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.7575757575757576,
+          "top_10_percent": 0.5454545454545454,
+          "top_5_percent": 0.3484848484848485
+        }
+      },
+      {
+        "fold": 2,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            178,
+            22
+          ],
+          [
+            30,
+            170
+          ]
+        ],
+        "valid_accuracy": 0.87,
+        "valid_kappa": 0.74,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 170,
+          "true_negative": 178,
+          "false_positive": 22,
+          "false_negative": 30,
+          "accuracy": 0.87,
+          "precision": 0.8854166666666666,
+          "recall": 0.85,
+          "sensitivity": 0.85,
+          "specificity": 0.89,
+          "f1": 0.8673469387755102,
+          "balanced_accuracy": 0.87,
+          "negative_predictive_value": 0.8557692307692307,
+          "false_positive_rate": 0.10999999999999999,
+          "false_negative_rate": 0.15000000000000002,
+          "roc_auc": 0.93855,
+          "pr_auc": 0.9223285472308999,
+          "average_precision": 0.9223285472308999
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.8,
+          "top_10_percent": 0.66,
+          "top_5_percent": 0.32
+        }
+      },
+      {
+        "fold": 3,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 197,
+        "valid_positive_count": 60,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            1,
+            199
+          ]
+        ],
+        "valid_confusion": [
+          [
+            160,
+            40
+          ],
+          [
+            38,
+            162
+          ]
+        ],
+        "valid_accuracy": 0.805,
+        "valid_kappa": 0.6100000000000001,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 162,
+          "true_negative": 160,
+          "false_positive": 40,
+          "false_negative": 38,
+          "accuracy": 0.805,
+          "precision": 0.801980198019802,
+          "recall": 0.81,
+          "sensitivity": 0.81,
+          "specificity": 0.8,
+          "f1": 0.8059701492537314,
+          "balanced_accuracy": 0.805,
+          "negative_predictive_value": 0.8080808080808081,
+          "false_positive_rate": 0.19999999999999996,
+          "false_negative_rate": 0.18999999999999995,
+          "roc_auc": 0.872625,
+          "pr_auc": 0.8445011508652412,
+          "average_precision": 0.8445011508652412
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.8166666666666667,
+          "top_10_percent": 0.6166666666666667,
+          "top_5_percent": 0.43333333333333335
+        }
+      },
+      {
+        "fold": 4,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            180,
+            20
+          ],
+          [
+            19,
+            181
+          ]
+        ],
+        "valid_accuracy": 0.9025,
+        "valid_kappa": 0.8049999999999999,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 181,
+          "true_negative": 180,
+          "false_positive": 20,
+          "false_negative": 19,
+          "accuracy": 0.9025,
+          "precision": 0.900497512437811,
+          "recall": 0.905,
+          "sensitivity": 0.905,
+          "specificity": 0.9,
+          "f1": 0.9027431421446384,
+          "balanced_accuracy": 0.9025000000000001,
+          "negative_predictive_value": 0.9045226130653267,
+          "false_positive_rate": 0.09999999999999998,
+          "false_negative_rate": 0.09499999999999997,
+          "roc_auc": 0.963075,
+          "pr_auc": 0.956709377691101,
+          "average_precision": 0.956709377691101
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.92,
+          "top_10_percent": 0.76,
+          "top_5_percent": 0.64
+        }
+      }
+    ],
+    "probability_stats": null,
+    "hotspot_threshold": null,
+    "hotspot_area": null,
+    "feature_importance": [
+      {
+        "feature": "alpha_score",
+        "importance_mean": 0.18713814407312304,
+        "importance_std": 0
+      },
+      {
+        "feature": "log_upa",
+        "importance_mean": 0.14319386785036314,
+        "importance_std": 0
+      },
+      {
+        "feature": "slope",
+        "importance_mean": 0.1346761830627415,
+        "importance_std": 0
+      },
+      {
+        "feature": "built",
+        "importance_mean": 0.11430873243912636,
+        "importance_std": 0
+      },
+      {
+        "feature": "hnd",
+        "importance_mean": 0.10912041752487993,
+        "importance_std": 0
+      },
+      {
+        "feature": "lowland",
+        "importance_mean": 0.10700731883150116,
+        "importance_std": 0
+      },
+      {
+        "feature": "sewer_sensor_count_norm",
+        "importance_mean": 0.0954535612679081,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_capacity_sum_norm",
+        "importance_mean": 0.06651362991802717,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_catchment_area_sum_norm",
+        "importance_mean": 0.02400354125936811,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_station_count_norm",
+        "importance_mean": 0.01078226999943605,
+        "importance_std": 0
+      },
+      {
+        "feature": "pump_reservoir_capacity_sum_norm",
+        "importance_mean": 0.0078023337735254545,
+        "importance_std": 0
+      },
+      {
+        "feature": "water_occ",
+        "importance_mean": 0.0,
+        "importance_std": 0
+      }
+    ]
+  },
+  "validation": {
+    "summary": {
+      "accuracy_mean": 0.7545,
+      "accuracy_std": 0.04173577602010057,
+      "kappa_mean": 0.514,
+      "kappa_std": 0.07733045971672482,
+      "roc_auc_mean": 0.8288550000000001,
+      "roc_auc_std": 0.04570526296281424,
+      "pr_auc_mean": 0.7919445116283106,
+      "pr_auc_std": 0.049388750705189624,
+      "average_precision_mean": 0.7919445116283106,
+      "average_precision_std": 0.049388750705189624,
+      "precision_mean": 0.7505233558173069,
+      "precision_std": 0.024639282403128054,
+      "recall_mean": 0.7689999999999999,
+      "recall_std": 0.08065358020571683,
+      "specificity_mean": 0.745,
+      "specificity_std": 0.03102418411497717,
+      "f1_mean": 0.7583376505195671,
+      "f1_std": 0.04818728241471543,
+      "balanced_accuracy_mean": 0.757,
+      "balanced_accuracy_std": 0.03866522985836243,
+      "negative_predictive_value_mean": 0.7674607673287293,
+      "negative_predictive_value_std": 0.059312992547560894,
+      "false_positive_rate_mean": 0.255,
+      "false_positive_rate_std": 0.03102418411497717,
+      "false_negative_rate_mean": 0.231,
+      "false_negative_rate_std": 0.08065358020571683
+    },
+    "fold_results": [
+      {
+        "model": "Hybrid-basic",
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            156,
+            44
+          ],
+          [
+            32,
+            168
+          ]
+        ],
+        "valid_accuracy": 0.81,
+        "valid_kappa": 0.6200000000000001,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 168,
+          "true_negative": 156,
+          "false_positive": 44,
+          "false_negative": 32,
+          "accuracy": 0.81,
+          "precision": 0.7924528301886793,
+          "recall": 0.84,
+          "sensitivity": 0.84,
+          "specificity": 0.78,
+          "f1": 0.8155339805825242,
+          "balanced_accuracy": 0.81,
+          "negative_predictive_value": 0.8297872340425532,
+          "false_positive_rate": 0.21999999999999997,
+          "false_negative_rate": 0.16000000000000003,
+          "roc_auc": 0.8984,
+          "pr_auc": 0.8758736317626514,
+          "average_precision": 0.8758736317626514
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.8064516129032258,
+          "top_10_percent": 0.3548387096774194,
+          "top_5_percent": 0.1935483870967742
+        }
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 1,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 191,
+        "valid_positive_count": 66,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            149,
+            51
+          ],
+          [
+            60,
+            140
+          ]
+        ],
+        "valid_accuracy": 0.71,
+        "valid_kappa": 0.44500000000000006,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 140,
+          "true_negative": 149,
+          "false_positive": 51,
+          "false_negative": 60,
+          "accuracy": 0.7225,
+          "precision": 0.7329842931937173,
+          "recall": 0.7,
+          "sensitivity": 0.7,
+          "specificity": 0.745,
+          "f1": 0.7161125319693096,
+          "balanced_accuracy": 0.7224999999999999,
+          "negative_predictive_value": 0.7129186602870813,
+          "false_positive_rate": 0.255,
+          "false_negative_rate": 0.30000000000000004,
+          "roc_auc": 0.780975,
+          "pr_auc": 0.7504624360177367,
+          "average_precision": 0.7504624360177367
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.7121212121212122,
+          "top_10_percent": 0.36363636363636365,
+          "top_5_percent": 0.21212121212121213
+        }
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 2,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            145,
+            55
+          ],
+          [
+            34,
+            166
+          ]
+        ],
+        "valid_accuracy": 0.7775,
+        "valid_kappa": 0.5549999999999999,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 166,
+          "true_negative": 145,
+          "false_positive": 55,
+          "false_negative": 34,
+          "accuracy": 0.7775,
+          "precision": 0.751131221719457,
+          "recall": 0.83,
+          "sensitivity": 0.83,
+          "specificity": 0.725,
+          "f1": 0.7885985748218526,
+          "balanced_accuracy": 0.7775,
+          "negative_predictive_value": 0.8100558659217877,
+          "false_positive_rate": 0.275,
+          "false_negative_rate": 0.17000000000000004,
+          "roc_auc": 0.82895,
+          "pr_auc": 0.7735988893253709,
+          "average_precision": 0.7735988893253709
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.62,
+          "top_10_percent": 0.34,
+          "top_5_percent": 0.16
+        }
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 3,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 197,
+        "valid_positive_count": 60,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            1,
+            199
+          ]
+        ],
+        "valid_confusion": [
+          [
+            154,
+            46
+          ],
+          [
+            67,
+            133
+          ]
+        ],
+        "valid_accuracy": 0.7175,
+        "valid_kappa": 0.43500000000000005,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 133,
+          "true_negative": 154,
+          "false_positive": 46,
+          "false_negative": 67,
+          "accuracy": 0.7175,
+          "precision": 0.7430167597765364,
+          "recall": 0.665,
+          "sensitivity": 0.665,
+          "specificity": 0.77,
+          "f1": 0.7018469656992086,
+          "balanced_accuracy": 0.7175,
+          "negative_predictive_value": 0.6968325791855203,
+          "false_positive_rate": 0.22999999999999998,
+          "false_negative_rate": 0.33499999999999996,
+          "roc_auc": 0.795725,
+          "pr_auc": 0.766382067705706,
+          "average_precision": 0.766382067705706
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.5333333333333333,
+          "top_10_percent": 0.26666666666666666,
+          "top_5_percent": 0.2
+        }
+      },
+      {
+        "model": "Hybrid-basic",
+        "fold": 4,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            141,
+            59
+          ],
+          [
+            38,
+            162
+          ]
+        ],
+        "valid_accuracy": 0.7575,
+        "valid_kappa": 0.5149999999999999,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 162,
+          "true_negative": 141,
+          "false_positive": 59,
+          "false_negative": 38,
+          "accuracy": 0.7575,
+          "precision": 0.7330316742081447,
+          "recall": 0.81,
+          "sensitivity": 0.81,
+          "specificity": 0.705,
+          "f1": 0.7695961995249405,
+          "balanced_accuracy": 0.7575000000000001,
+          "negative_predictive_value": 0.7877094972067039,
+          "false_positive_rate": 0.29500000000000004,
+          "false_negative_rate": 0.18999999999999995,
+          "roc_auc": 0.840225,
+          "pr_auc": 0.793405533330088,
+          "average_precision": 0.793405533330088
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.7,
+          "top_10_percent": 0.56,
+          "top_5_percent": 0.36
+        }
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "fold": 0,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 226,
+        "valid_positive_count": 31,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            165,
+            35
+          ],
+          [
+            22,
+            178
+          ]
+        ],
+        "valid_accuracy": 0.85,
+        "valid_kappa": 0.7150000000000001,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 178,
+          "true_negative": 162,
+          "false_positive": 38,
+          "false_negative": 22,
+          "accuracy": 0.85,
+          "precision": 0.8240740740740741,
+          "recall": 0.89,
+          "sensitivity": 0.89,
+          "specificity": 0.81,
+          "f1": 0.8557692307692307,
+          "balanced_accuracy": 0.8500000000000001,
+          "negative_predictive_value": 0.8804347826086957,
+          "false_positive_rate": 0.18999999999999995,
+          "false_negative_rate": 0.10999999999999999,
+          "roc_auc": 0.9232,
+          "pr_auc": 0.9156907433240271,
+          "average_precision": 0.9156907433240271
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.8709677419354839,
+          "top_10_percent": 0.5483870967741935,
+          "top_5_percent": 0.2903225806451613
+        }
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "fold": 1,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 191,
+        "valid_positive_count": 66,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            163,
+            37
+          ],
+          [
+            56,
+            144
+          ]
+        ],
+        "valid_accuracy": 0.7675,
+        "valid_kappa": 0.5349999999999999,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 144,
+          "true_negative": 163,
+          "false_positive": 37,
+          "false_negative": 56,
+          "accuracy": 0.7675,
+          "precision": 0.7955801104972375,
+          "recall": 0.72,
+          "sensitivity": 0.72,
+          "specificity": 0.815,
+          "f1": 0.7559055118110236,
+          "balanced_accuracy": 0.7675,
+          "negative_predictive_value": 0.7442922374429224,
+          "false_positive_rate": 0.18500000000000005,
+          "false_negative_rate": 0.28,
+          "roc_auc": 0.857725,
+          "pr_auc": 0.8651518982721909,
+          "average_precision": 0.8651518982721909
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.7575757575757576,
+          "top_10_percent": 0.5454545454545454,
+          "top_5_percent": 0.3484848484848485
+        }
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "fold": 2,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            178,
+            22
+          ],
+          [
+            30,
+            170
+          ]
+        ],
+        "valid_accuracy": 0.87,
+        "valid_kappa": 0.74,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 170,
+          "true_negative": 178,
+          "false_positive": 22,
+          "false_negative": 30,
+          "accuracy": 0.87,
+          "precision": 0.8854166666666666,
+          "recall": 0.85,
+          "sensitivity": 0.85,
+          "specificity": 0.89,
+          "f1": 0.8673469387755102,
+          "balanced_accuracy": 0.87,
+          "negative_predictive_value": 0.8557692307692307,
+          "false_positive_rate": 0.10999999999999999,
+          "false_negative_rate": 0.15000000000000002,
+          "roc_auc": 0.93855,
+          "pr_auc": 0.9223285472308999,
+          "average_precision": 0.9223285472308999
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.8,
+          "top_10_percent": 0.66,
+          "top_5_percent": 0.32
+        }
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "fold": 3,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 197,
+        "valid_positive_count": 60,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            1,
+            199
+          ]
+        ],
+        "valid_confusion": [
+          [
+            160,
+            40
+          ],
+          [
+            38,
+            162
+          ]
+        ],
+        "valid_accuracy": 0.805,
+        "valid_kappa": 0.6100000000000001,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 162,
+          "true_negative": 160,
+          "false_positive": 40,
+          "false_negative": 38,
+          "accuracy": 0.805,
+          "precision": 0.801980198019802,
+          "recall": 0.81,
+          "sensitivity": 0.81,
+          "specificity": 0.8,
+          "f1": 0.8059701492537314,
+          "balanced_accuracy": 0.805,
+          "negative_predictive_value": 0.8080808080808081,
+          "false_positive_rate": 0.19999999999999996,
+          "false_negative_rate": 0.18999999999999995,
+          "roc_auc": 0.872625,
+          "pr_auc": 0.8445011508652412,
+          "average_precision": 0.8445011508652412
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.8166666666666667,
+          "top_10_percent": 0.6166666666666667,
+          "top_5_percent": 0.43333333333333335
+        }
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "fold": 4,
+        "positive_buffer_m": 60,
+        "negative_buffer_m": 300,
+        "train_positive_count": 207,
+        "valid_positive_count": 50,
+        "train_sample_count": 400,
+        "valid_sample_count": 400,
+        "train_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "valid_label_histogram": {
+          "0": 200,
+          "1": 200
+        },
+        "train_confusion": [
+          [
+            200,
+            0
+          ],
+          [
+            0,
+            200
+          ]
+        ],
+        "valid_confusion": [
+          [
+            180,
+            20
+          ],
+          [
+            19,
+            181
+          ]
+        ],
+        "valid_accuracy": 0.9025,
+        "valid_kappa": 0.8049999999999999,
+        "valid_metrics": {
+          "threshold": 0.5,
+          "sample_count": 400,
+          "positive_count": 200,
+          "negative_count": 200,
+          "true_positive": 181,
+          "true_negative": 180,
+          "false_positive": 20,
+          "false_negative": 19,
+          "accuracy": 0.9025,
+          "precision": 0.900497512437811,
+          "recall": 0.905,
+          "sensitivity": 0.905,
+          "specificity": 0.9,
+          "f1": 0.9027431421446384,
+          "balanced_accuracy": 0.9025000000000001,
+          "negative_predictive_value": 0.9045226130653267,
+          "false_positive_rate": 0.09999999999999998,
+          "false_negative_rate": 0.09499999999999997,
+          "roc_auc": 0.963075,
+          "pr_auc": 0.956709377691101,
+          "average_precision": 0.956709377691101
+        },
+        "hotspot_point_recall": {
+          "top_20_percent": 0.92,
+          "top_10_percent": 0.76,
+          "top_5_percent": 0.64
+        }
+      }
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "alpha_score",
+      "importance_mean": 0.21338009935064856,
+      "importance_std": 0.016366359263338418
+    },
+    {
+      "feature": "log_upa",
+      "importance_mean": 0.18333282593906244,
+      "importance_std": 0.03370909199420166
+    },
+    {
+      "feature": "slope",
+      "importance_mean": 0.17398068047032622,
+      "importance_std": 0.008995841694315526
+    },
+    {
+      "feature": "hnd",
+      "importance_mean": 0.15335195727882311,
+      "importance_std": 0.03457049706458456
+    },
+    {
+      "feature": "built",
+      "importance_mean": 0.14835272312870199,
+      "importance_std": 0.03208798076933947
+    },
+    {
+      "feature": "lowland",
+      "importance_mean": 0.12760171383243768,
+      "importance_std": 0.03777579777675624
+    },
+    {
+      "feature": "water_occ",
+      "importance_mean": 0.0,
+      "importance_std": 0.0
+    }
+  ],
+  "topk": {
+    "cv_summary": [
+      {
+        "model": "Hybrid-basic",
+        "percentile": 80,
+        "top_percent": 20,
+        "evaluated_point_recall_mean": 0.6743812316715543,
+        "evaluated_point_recall_std": 0.10292599404114412,
+        "all_point_recall_mean": 0.6743812316715543,
+        "evaluated_point_lift_mean": 3.332271674612141,
+        "hotspot_area_share_mean": 0.20235446480434494,
+        "hit_points_mean": 34.0,
+        "hotspot_area_km2_mean": 109.13976941401793
+      },
+      {
+        "model": "Hybrid-basic",
+        "percentile": 90,
+        "top_percent": 10,
+        "evaluated_point_recall_mean": 0.37702834799609,
+        "evaluated_point_recall_std": 0.109202964694212,
+        "all_point_recall_mean": 0.37702834799609,
+        "evaluated_point_lift_mean": 3.740793969907736,
+        "hotspot_area_share_mean": 0.10053975782901403,
+        "hit_points_mean": 19.2,
+        "hotspot_area_km2_mean": 54.22606314621919
+      },
+      {
+        "model": "Hybrid-basic",
+        "percentile": 95,
+        "top_percent": 5,
+        "evaluated_point_recall_mean": 0.22513391984359726,
+        "evaluated_point_recall_std": 0.07782990662145661,
+        "all_point_recall_mean": 0.22513391984359726,
+        "evaluated_point_lift_mean": 4.433461694039467,
+        "hotspot_area_share_mean": 0.05069593289245664,
+        "hit_points_mean": 11.6,
+        "hotspot_area_km2_mean": 27.342823552032854
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "percentile": 80,
+        "top_percent": 20,
+        "evaluated_point_recall_mean": 0.8330420332355816,
+        "evaluated_point_recall_std": 0.06335442904162997,
+        "all_point_recall_mean": 0.8330420332355816,
+        "evaluated_point_lift_mean": 4.129017621123064,
+        "hotspot_area_share_mean": 0.20173939848583416,
+        "hit_points_mean": 42.4,
+        "hotspot_area_km2_mean": 108.80125764644387
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "percentile": 90,
+        "top_percent": 10,
+        "evaluated_point_recall_mean": 0.6261016617790811,
+        "evaluated_point_recall_std": 0.08903706030439906,
+        "all_point_recall_mean": 0.6261016617790811,
+        "evaluated_point_lift_mean": 6.244419477601001,
+        "hotspot_area_share_mean": 0.10025175768728256,
+        "hit_points_mean": 32.2,
+        "hotspot_area_km2_mean": 54.067363140317866
+      },
+      {
+        "model": "Hybrid-plus-drainage-gu-stats",
+        "percentile": 95,
+        "top_percent": 5,
+        "evaluated_point_recall_mean": 0.4064281524926686,
+        "evaluated_point_recall_std": 0.14105624103591824,
+        "all_point_recall_mean": 0.4064281524926686,
+        "evaluated_point_lift_mean": 8.266294468037753,
+        "hotspot_area_share_mean": 0.049128677538459495,
+        "hit_points_mean": 21.2,
+        "hotspot_area_km2_mean": 26.495875088406827
+      }
+    ],
+    "selected_fold": []
+  },
+  "risk_grade": {
+    "thresholds": {},
+    "area_summary": [],
+    "point_summary": [],
+    "cumulative_point_summary": [],
+    "legend": {}
+  },
+  "external_validation": {
+    "reference": {
+      "used": false,
+      "reason": "not_requested"
+    },
+    "overlap_metrics": []
+  },
+  "alpha_ablation": null,
+  "feature_ablations": null,
+  "buffer_sensitivity": [],
+  "model_comparison": {
+    "summaries": [],
+    "fold_results": [],
+    "feature_importance": {}
+  },
+  "outputs": {
+    "html": "/Users/cho/alpha_earth/seoul_flood/seoul_flood_risk_rf.html",
+    "output_dir": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv",
+    "metrics_json": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv/metrics.json",
+    "cv_results_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv/cv_results.csv",
+    "feature_importance_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv/feature_importance.csv",
+    "model_comparison_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv/model_comparison.csv",
+    "topk_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv/topk_summary.csv",
+    "selected_fold_topk_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv/selected_fold_topk.csv",
+    "risk_grade_summary_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv/risk_grade_summary.csv",
+    "risk_grade_points_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv/risk_grade_points.csv",
+    "cumulative_risk_grade_points_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv/cumulative_risk_grade_points.csv",
+    "external_validation_csv": "/Users/cho/alpha_earth/seoul_flood/outputs/selected_model_full_cv/external_validation.csv"
+  }
+}

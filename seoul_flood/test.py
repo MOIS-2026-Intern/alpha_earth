@@ -521,6 +521,22 @@ DEFAULT_OFFICIAL_FLOOD_SHP_ZIP_DIR = os.path.join(
     "source",
     "official_city_flood",
 )
+DEFAULT_OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR = os.path.join(
+    SCRIPT_DIR,
+    "source",
+    "official_city_flood_by_frequency",
+)
+OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR = os.environ.get(
+    "OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR",
+    "",
+).strip()
+if OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR:
+    OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR = resolve_input_path(
+        OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR,
+        fallback_dir=os.path.join(SCRIPT_DIR, "source"),
+    )
+elif os.path.isdir(DEFAULT_OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR):
+    OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR = DEFAULT_OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR
 OFFICIAL_FLOOD_SHP_ZIP_DIR = os.environ.get("OFFICIAL_FLOOD_SHP_ZIP_DIR", "").strip()
 if OFFICIAL_FLOOD_SHP_ZIP_DIR:
     OFFICIAL_FLOOD_SHP_ZIP_DIR = resolve_input_path(
@@ -532,13 +548,14 @@ elif os.path.isdir(DEFAULT_OFFICIAL_FLOOD_SHP_ZIP_DIR):
 OFFICIAL_FLOOD_SHP_PROJ = os.environ.get("OFFICIAL_FLOOD_SHP_PROJ", "EPSG:5186")
 OFFICIAL_FLOOD_SHP_ENCODING = os.environ.get("OFFICIAL_FLOOD_SHP_ENCODING", "cp949")
 OFFICIAL_FLOOD_SHP_SIMPLIFY_M = float(
-    os.environ.get("OFFICIAL_FLOOD_SHP_SIMPLIFY_M", "15")
+    os.environ.get("OFFICIAL_FLOOD_SHP_SIMPLIFY_M", "30")
 )
 RUN_EXTERNAL_VALIDATION = os.environ.get(
     "RUN_EXTERNAL_VALIDATION",
     "1" if (
         OFFICIAL_FLOOD_GEOJSON
         or OFFICIAL_FLOOD_EE_ASSET
+        or OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR
         or OFFICIAL_FLOOD_SHP_ZIP_DIR
     ) else "0",
 ) == "1"
@@ -862,6 +879,7 @@ print(
         "external_validation": RUN_EXTERNAL_VALIDATION,
         "official_flood_geojson": OFFICIAL_FLOOD_GEOJSON,
         "official_flood_ee_asset": OFFICIAL_FLOOD_EE_ASSET,
+        "official_flood_shp_freq_root_dir": OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR,
         "official_flood_shp_zip_dir": OFFICIAL_FLOOD_SHP_ZIP_DIR,
         "official_flood_shp_proj": OFFICIAL_FLOOD_SHP_PROJ,
         "official_flood_shp_simplify_m": OFFICIAL_FLOOD_SHP_SIMPLIFY_M,
@@ -1800,9 +1818,20 @@ def simplify_ring(ring, tolerance):
     if len(coords) <= 3:
         return [[x, y] for x, y in coords + [coords[0]]]
 
-    midpoint = len(coords) // 2
-    first_half = simplify_line(coords[: midpoint + 1], tolerance)
-    second_half = simplify_line(coords[midpoint:] + [coords[0]], tolerance)
+    xs = [point[0] for point in coords]
+    ys = [point[1] for point in coords]
+    if max(xs) - min(xs) >= max(ys) - min(ys):
+        anchor_a = xs.index(min(xs))
+        anchor_b = xs.index(max(xs))
+    else:
+        anchor_a = ys.index(min(ys))
+        anchor_b = ys.index(max(ys))
+    if anchor_a > anchor_b:
+        anchor_a, anchor_b = anchor_b, anchor_a
+    first_path = coords[anchor_a: anchor_b + 1]
+    second_path = coords[anchor_b:] + coords[: anchor_a + 1]
+    first_half = simplify_line(first_path, tolerance)
+    second_half = simplify_line(second_path, tolerance)
     simplified = first_half[:-1] + second_half[:-1]
 
     deduped = []
@@ -1810,7 +1839,14 @@ def simplify_ring(ring, tolerance):
         if not deduped or point != deduped[-1]:
             deduped.append(point)
     if len(deduped) < 3:
-        deduped = coords
+        start = coords[anchor_a]
+        end = coords[anchor_b]
+        third = max(
+            (point for idx, point in enumerate(coords) if idx not in (anchor_a, anchor_b)),
+            key=lambda point: point_segment_distance(point, start, end),
+            default=None,
+        )
+        deduped = [start, third, end] if third else coords[:3]
     if deduped[0] != deduped[-1]:
         deduped.append(deduped[0])
     return [[x, y] for x, y in deduped]
@@ -1879,6 +1915,7 @@ def shape_record_to_ee_feature(shape_record, source_zip, source_shp):
 
 def load_shp_zip_feature_collection(zip_dir):
     """공식 도시침수 SHP ZIP 폴더를 EE FeatureCollection으로 읽는다."""
+    metadata = official_flood_dir_metadata(zip_dir)
     if not os.path.isdir(zip_dir):
         return None, {
             "used": False,
@@ -1894,6 +1931,10 @@ def load_shp_zip_feature_collection(zip_dir):
         for name in os.listdir(zip_dir)
         if name.lower().endswith(".zip")
     )
+    zip_paths = [
+        path for path in zip_paths
+        if official_flood_zip_matches_frequency(path, metadata.get("flood_frequency"))
+    ]
     if not zip_paths:
         return None, {
             "used": False,
@@ -1904,9 +1945,12 @@ def load_shp_zip_feature_collection(zip_dir):
             "reason": "zip_files_missing",
         }
 
-    features = []
+    feature_collections = []
+    chunk_summaries = []
     shp_file_count = 0
+    total_count = 0
     for zip_path in zip_paths:
+        zip_features = []
         with zipfile.ZipFile(zip_path) as zf, tempfile.TemporaryDirectory() as temp_dir:
             zf.extractall(temp_dir)
             shp_paths = []
@@ -1930,21 +1974,119 @@ def load_shp_zip_feature_collection(zip_dir):
                         os.path.basename(shp_path),
                     )
                     if feature is not None:
-                        features.append(feature)
+                        zip_features.append(feature)
 
-    external_fc = ee.FeatureCollection(features).filterBounds(seoul)
-    count = external_fc.size().getInfo()
-    return external_fc, {
-        "used": count > 0,
+        if not zip_features:
+            continue
+        chunk_fc = ee.FeatureCollection(zip_features)
+        chunk_count = len(zip_features)
+        feature_collections.append(chunk_fc)
+        total_count += chunk_count
+        chunk_summaries.append(
+            {
+                "source_zip": os.path.basename(zip_path),
+                "feature_count": chunk_count,
+            }
+        )
+
+    return feature_collections, {
+        "used": total_count > 0,
         "source_type": "shp_zip_dir",
         "source": zip_dir,
+        **metadata,
         "projection": OFFICIAL_FLOOD_SHP_PROJ,
         "encoding": OFFICIAL_FLOOD_SHP_ENCODING,
         "zip_count": len(zip_paths),
         "shp_file_count": shp_file_count,
-        "feature_count": count,
-        "reason": None if count > 0 else "empty_after_filter_bounds",
+        "feature_count": total_count,
+        "chunk_count": len(feature_collections),
+        "chunks": chunk_summaries,
+        "validation_mode": "chunked_zip_sum",
+        "reason": None if total_count > 0 else "empty_after_filter_bounds",
     }
+
+
+def infer_official_flood_frequency(dataset_name, fallback="unknown"):
+    """공식 도시침수지도 데이터셋명/폴더명에서 빈도 라벨을 추론한다."""
+    if not dataset_name:
+        return fallback
+    if "기왕최대" in dataset_name or dataset_name.upper() == "MAX":
+        return "MAX"
+    match = re.search(r"(\d+)\s*년", dataset_name)
+    if match:
+        return match.group(1)
+    match = re.search(r"freq[_-]?(\d+|MAX)", dataset_name, re.IGNORECASE)
+    if match:
+        value = match.group(1).upper()
+        return str(int(value)) if value.isdigit() else value
+    return fallback
+
+
+def official_flood_frequency_sort_key(summary):
+    order = {"30": 30, "50": 50, "80": 80, "100": 100, "500": 500, "MAX": 999}
+    return order.get(str(summary.get("flood_frequency", "unknown")).upper(), 10000)
+
+
+def official_flood_zip_matches_frequency(zip_path, frequency):
+    """검색 API가 다른 빈도 파일을 섞어 반환하는 경우를 막는다."""
+    frequency = str(frequency or "unknown").upper()
+    if frequency == "UNKNOWN":
+        return True
+    suffix_by_frequency = {
+        "30": "_030.zip",
+        "50": "_050.zip",
+        "80": "_080.zip",
+        "100": "_100.zip",
+        "500": "_500.zip",
+        "MAX": "_MAX.zip",
+    }
+    suffix = suffix_by_frequency.get(frequency)
+    return True if not suffix else os.path.basename(zip_path).upper().endswith(suffix.upper())
+
+
+def official_flood_dir_metadata(zip_dir):
+    """다운로드 metadata.json이 있으면 읽고, 없으면 폴더명에서 빈도를 추론한다."""
+    metadata_path = os.path.join(zip_dir, "metadata.json")
+    metadata = {}
+    if os.path.exists(metadata_path):
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+
+    dataset = metadata.get("dataset") or os.path.basename(zip_dir)
+    frequency = metadata.get("frequency") or infer_official_flood_frequency(
+        dataset,
+        fallback=infer_official_flood_frequency(os.path.basename(zip_dir)),
+    )
+    label = metadata.get("label") or (
+        "기왕최대" if frequency == "MAX" else f"{frequency}년"
+    )
+    return {
+        "official_dataset": dataset,
+        "flood_frequency": frequency,
+        "flood_frequency_label": label,
+    }
+
+
+def discover_official_flood_shp_dirs():
+    """빈도별 공식 도시침수지도 SHP ZIP 폴더 목록을 찾는다."""
+    dirs = []
+    if OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR and os.path.isdir(OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR):
+        for name in sorted(os.listdir(OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR)):
+            candidate = os.path.join(OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR, name)
+            if not os.path.isdir(candidate):
+                continue
+            if any(item.lower().endswith(".zip") for item in os.listdir(candidate)):
+                dirs.append(candidate)
+
+    if not dirs and OFFICIAL_FLOOD_SHP_ZIP_DIR:
+        dirs.append(OFFICIAL_FLOOD_SHP_ZIP_DIR)
+
+    return sorted(
+        dirs,
+        key=lambda path: official_flood_frequency_sort_key(
+            official_flood_dir_metadata(path)
+        ),
+    )
 
 
 def load_external_flood_reference():
@@ -2004,6 +2146,34 @@ def load_external_flood_reference():
     }
 
 
+def load_external_flood_references():
+    """공식 침수지도/외부 기준 polygon 여러 개를 EE FeatureCollection으로 불러온다."""
+    if OFFICIAL_FLOOD_EE_ASSET or OFFICIAL_FLOOD_GEOJSON:
+        external_fc, summary = load_external_flood_reference()
+        return [(external_fc, summary)]
+
+    references = []
+    for zip_dir in discover_official_flood_shp_dirs():
+        external_fc, summary = load_shp_zip_feature_collection(zip_dir)
+        references.append((external_fc, summary))
+
+    if references:
+        return references
+
+    return [
+        (
+            None,
+            {
+                "used": False,
+                "source_type": None,
+                "source": None,
+                "feature_count": 0,
+                "reason": "not_configured",
+            },
+        )
+    ]
+
+
 def area_sum_km2(mask):
     """마스크가 켜진 영역의 면적(km2)을 계산한다."""
     value = (
@@ -2023,120 +2193,231 @@ def area_sum_km2(mask):
     return ee.Number(ee.Algorithms.If(value, value, 0))
 
 
-def compute_external_flood_validation(probability, external_fc):
+def probability_area_sum_km2(probability, mask):
+    """확률값에 픽셀 면적(km2)을 곱한 합을 계산한다."""
+    value = (
+        probability
+        .multiply(ee.Image.pixelArea().divide(1e6))
+        .rename("weighted_probability")
+        .updateMask(mask)
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=seoul,
+            scale=ANALYSIS_SCALE,
+            maxPixels=1e9,
+            bestEffort=True,
+            tileScale=4,
+        )
+        .get("weighted_probability")
+    )
+    return ee.Number(ee.Algorithms.If(value, value, 0))
+
+
+def normalize_external_feature_collections(external_fc):
+    """단일 FC 또는 ZIP 단위 FC 목록을 동일한 반복 구조로 맞춘다."""
+    if external_fc is None:
+        return []
+    if isinstance(external_fc, (list, tuple)):
+        return [feature_collection for feature_collection in external_fc if feature_collection is not None]
+    return [external_fc]
+
+
+def compute_external_flood_validation(probability, external_fc, reference_summary=None):
     """모델 고위험지역과 공식/외부 침수 polygon의 면적 겹침을 평가한다."""
+    reference_summary = reference_summary or {}
+    external_fcs = normalize_external_feature_collections(external_fc)
     probability_mask = probability.mask()
     analysis_mask = ee.Image.constant(1).clip(seoul).updateMask(probability_mask)
-    external_mask = (
-        ee.Image.constant(0)
-        .byte()
-        .paint(external_fc, 1)
-        .rename("external_flood")
-        .clip(seoul)
-        .updateMask(probability_mask)
-    )
-    external_binary = external_mask.unmask(0).eq(1)
-    external_self_mask = external_binary.selfMask()
-    outside_external_mask = external_binary.eq(0).updateMask(analysis_mask)
-
-    analysis_area = area_sum_km2(analysis_mask)
-    external_area = area_sum_km2(external_self_mask)
-    external_area_share = ee.Number(
-        ee.Algorithms.If(
-            analysis_area.gt(0),
-            external_area.divide(analysis_area),
-            0,
+    pixel_area_km2 = ee.Image.pixelArea().divide(1e6)
+    analysis_summary = (
+        pixel_area_km2
+        .rename("analysis_area")
+        .updateMask(analysis_mask)
+        .addBands(
+            probability
+            .multiply(pixel_area_km2)
+            .rename("total_probability_area")
+            .updateMask(analysis_mask)
         )
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=seoul,
+            scale=ANALYSIS_SCALE,
+            maxPixels=1e9,
+            bestEffort=True,
+            tileScale=4,
+        )
+        .getInfo()
     )
-    inside_mean = probability.updateMask(external_self_mask).reduceRegion(
-        reducer=ee.Reducer.mean(),
+    analysis_area = analysis_summary.get("analysis_area", 0) or 0
+    total_probability_area = analysis_summary.get("total_probability_area", 0) or 0
+    percentile_values = probability.reduceRegion(
+        reducer=ee.Reducer.percentile(EXTERNAL_VALIDATION_PERCENTILES),
         geometry=seoul,
         scale=ANALYSIS_SCALE,
         maxPixels=1e9,
         bestEffort=True,
         tileScale=4,
-    ).get("flood_prob")
-    outside_mean = probability.updateMask(outside_external_mask).reduceRegion(
-        reducer=ee.Reducer.mean(),
-        geometry=seoul,
-        scale=ANALYSIS_SCALE,
-        maxPixels=1e9,
-        bestEffort=True,
-        tileScale=4,
-    ).get("flood_prob")
+    ).getInfo()
+    thresholds = {
+        percentile: percentile_values.get(f"flood_prob_p{percentile}")
+        for percentile in EXTERNAL_VALIDATION_PERCENTILES
+    }
 
-    mean_probability_delta = ee.Algorithms.If(
-        ee.Algorithms.IsEqual(inside_mean, None),
-        None,
-        ee.Algorithms.If(
-            ee.Algorithms.IsEqual(outside_mean, None),
-            None,
-            ee.Number(inside_mean).subtract(outside_mean),
-        ),
-    )
-
-    metric_features = []
+    hotspot_masks = {}
+    hotspot_area_bands = []
     for percentile in EXTERNAL_VALIDATION_PERCENTILES:
-        percentile_values = ee.Dictionary(
-            probability.reduceRegion(
-                reducer=ee.Reducer.percentile([percentile]),
+        threshold = thresholds[percentile]
+        hotspot_mask = probability.gte(threshold).selfMask()
+        hotspot_masks[percentile] = hotspot_mask
+        hotspot_area_bands.append(
+            pixel_area_km2
+            .rename(f"hotspot_area_{percentile}")
+            .updateMask(hotspot_mask)
+        )
+    hotspot_area_info = (
+        ee.Image.cat(hotspot_area_bands)
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=seoul,
+            scale=ANALYSIS_SCALE,
+            maxPixels=1e9,
+            bestEffort=True,
+            tileScale=4,
+        )
+        .getInfo()
+    )
+    hotspot_areas = {
+        percentile: hotspot_area_info.get(f"hotspot_area_{percentile}", 0) or 0
+        for percentile in EXTERNAL_VALIDATION_PERCENTILES
+    }
+
+    external_area = 0
+    inside_probability_area = 0
+    overlap_areas = {percentile: 0 for percentile in EXTERNAL_VALIDATION_PERCENTILES}
+    for chunk_fc in external_fcs:
+        external_mask = (
+            ee.Image.constant(0)
+            .byte()
+            .paint(chunk_fc, 1)
+            .rename("external_flood")
+            .clip(seoul)
+            .updateMask(probability_mask)
+        )
+        external_self_mask = external_mask.unmask(0).eq(1).selfMask()
+        chunk_bands = [
+            pixel_area_km2
+            .rename("external_area")
+            .updateMask(external_self_mask),
+            probability
+            .multiply(pixel_area_km2)
+            .rename("inside_probability_area")
+            .updateMask(external_self_mask),
+        ]
+        for percentile, hotspot_mask in hotspot_masks.items():
+            chunk_bands.append(
+                pixel_area_km2
+                .rename(f"overlap_area_{percentile}")
+                .updateMask(hotspot_mask)
+                .updateMask(external_self_mask)
+            )
+        chunk_summary = (
+            ee.Image.cat(chunk_bands)
+            .reduceRegion(
+                reducer=ee.Reducer.sum(),
                 geometry=seoul,
                 scale=ANALYSIS_SCALE,
                 maxPixels=1e9,
                 bestEffort=True,
                 tileScale=4,
             )
+            .getInfo()
         )
-        threshold = ee.Number(percentile_values.values().get(0))
-        hotspot_mask = probability.gte(threshold).selfMask()
-        hotspot_area = area_sum_km2(hotspot_mask)
-        overlap_mask = hotspot_mask.updateMask(external_self_mask)
-        overlap_area = area_sum_km2(overlap_mask)
-        hotspot_precision = ee.Algorithms.If(
-            hotspot_area.gt(0),
-            overlap_area.divide(hotspot_area),
-            None,
-        )
-        external_recall = ee.Algorithms.If(
-            external_area.gt(0),
-            overlap_area.divide(external_area),
-            None,
-        )
-        hotspot_area_share = ee.Algorithms.If(
-            analysis_area.gt(0),
-            hotspot_area.divide(analysis_area),
-            None,
-        )
-        lift = ee.Algorithms.If(
-            external_area_share.gt(0),
-            ee.Number(hotspot_precision).divide(external_area_share),
-            None,
-        )
-        metric_features.append(
-            ee.Feature(
-                None,
-                {
-                    "percentile": percentile,
-                    "top_percent": 100 - percentile,
-                    "threshold": threshold,
-                    "analysis_area_km2": analysis_area,
-                    "external_flood_area_km2": external_area,
-                    "external_flood_area_share": external_area_share,
-                    "hotspot_area_km2": hotspot_area,
-                    "hotspot_area_share": hotspot_area_share,
-                    "overlap_area_km2": overlap_area,
-                    "hotspot_precision_vs_external": hotspot_precision,
-                    "external_flood_recall": external_recall,
-                    "overlap_lift": lift,
-                    "mean_probability_inside_external": inside_mean,
-                    "mean_probability_outside_external": outside_mean,
-                    "mean_probability_delta": mean_probability_delta,
-                },
+        chunk_area = chunk_summary.get("external_area", 0) or 0
+        if not chunk_area:
+            continue
+        external_area += chunk_area
+        inside_probability_area += chunk_summary.get("inside_probability_area", 0) or 0
+        for percentile in EXTERNAL_VALIDATION_PERCENTILES:
+            overlap_areas[percentile] += (
+                chunk_summary.get(f"overlap_area_{percentile}", 0) or 0
             )
+
+    outside_area = max(analysis_area - external_area, 0)
+    outside_probability_area = max(total_probability_area - inside_probability_area, 0)
+    external_area_share = (
+        external_area / analysis_area
+        if analysis_area
+        else None
+    )
+    inside_mean = (
+        inside_probability_area / external_area
+        if external_area
+        else None
+    )
+    outside_mean = (
+        outside_probability_area / outside_area
+        if outside_area
+        else None
+    )
+    mean_probability_delta = (
+        inside_mean - outside_mean
+        if inside_mean is not None and outside_mean is not None
+        else None
+    )
+
+    rows = []
+    for percentile in EXTERNAL_VALIDATION_PERCENTILES:
+        hotspot_area = hotspot_areas[percentile]
+        overlap_area = overlap_areas[percentile]
+        hotspot_precision = (
+            overlap_area / hotspot_area
+            if hotspot_area
+            else None
+        )
+        external_recall = (
+            overlap_area / external_area
+            if external_area
+            else None
+        )
+        hotspot_area_share = (
+            hotspot_area / analysis_area
+            if analysis_area
+            else None
+        )
+        lift = (
+            hotspot_precision / external_area_share
+            if hotspot_precision is not None and external_area_share
+            else None
+        )
+        rows.append(
+            {
+                "flood_frequency": reference_summary.get("flood_frequency"),
+                "flood_frequency_label": reference_summary.get("flood_frequency_label"),
+                "official_dataset": reference_summary.get("official_dataset"),
+                "reference_source_type": reference_summary.get("source_type"),
+                "reference_source": reference_summary.get("source"),
+                "external_validation_mode": reference_summary.get("validation_mode"),
+                "external_validation_chunk_count": len(external_fcs),
+                "percentile": percentile,
+                "top_percent": 100 - percentile,
+                "threshold": thresholds[percentile],
+                "analysis_area_km2": analysis_area,
+                "external_flood_area_km2": external_area,
+                "external_flood_area_share": external_area_share,
+                "hotspot_area_km2": hotspot_area,
+                "hotspot_area_share": hotspot_area_share,
+                "overlap_area_km2": overlap_area,
+                "hotspot_precision_vs_external": hotspot_precision,
+                "external_flood_recall": external_recall,
+                "overlap_lift": lift,
+                "mean_probability_inside_external": inside_mean,
+                "mean_probability_outside_external": outside_mean,
+                "mean_probability_delta": mean_probability_delta,
+            }
         )
 
-    metrics = ee.FeatureCollection(metric_features).getInfo()["features"]
-    return [feature["properties"] for feature in metrics]
+    return rows
 
 
 def build_risk_grade_legend(grade_summaries):
@@ -2846,7 +3127,10 @@ def buffer_sensitivity_configs():
     return configs
 
 
-def run_buffer_sensitivity():
+def run_buffer_sensitivity(model_name="Hybrid-basic", input_bands=None):
+    if input_bands is None:
+        input_bands = hybrid_feature_bands
+
     sensitivity_folds = [
         fold for fold in BUFFER_SENSITIVITY_FOLDS if 0 <= fold < SPATIAL_FOLDS
     ]
@@ -2854,10 +3138,11 @@ def run_buffer_sensitivity():
         print("Buffer sensitivity skipped: no valid folds configured.")
         return []
 
-    print("\nHybrid-basic buffer sensitivity:")
+    print(f"\n{model_name} buffer sensitivity:")
     print(
         "Sensitivity folds/config:",
         {
+            "model": model_name,
             "folds": sensitivity_folds,
             "positive_sweep_m": POSITIVE_BUFFER_SWEEP_M,
             "negative_sweep_m": NEGATIVE_BUFFER_SWEEP_M,
@@ -2872,11 +3157,13 @@ def run_buffer_sensitivity():
                 positive_buffer_m=config["positive_buffer_m"],
                 negative_buffer_m=config["negative_buffer_m"],
                 include_map_outputs=False,
+                input_bands=input_bands,
             )
             for fold in sensitivity_folds
         ]
         summary = summarize_validation(fold_rows)
         row = {
+            "model": model_name,
             **config,
             "folds": sensitivity_folds,
             **summary,
@@ -3279,11 +3566,6 @@ else:
     print("\nFeature ablations skipped for fast model-building run.")
     print("Set RUN_FEATURE_ABLATIONS=1 to retest candidate feature sets.")
 
-if RUN_BUFFER_SENSITIVITY:
-    buffer_sensitivity_rows = run_buffer_sensitivity()
-else:
-    buffer_sensitivity_rows = []
-
 selected_cv_results = []
 if selected_model_name == "Hybrid-basic":
     selected_cv_results = cv_results
@@ -3326,6 +3608,14 @@ if selected_cv_summary and selected_model_name != "Hybrid-basic":
         print(f"{selected_model_name} hotspot recall summary:")
         for row in selected_hotspot_cv_summary:
             print(row)
+
+if RUN_BUFFER_SENSITIVITY:
+    buffer_sensitivity_rows = run_buffer_sensitivity(
+        selected_model_name,
+        selected_feature_bands,
+    )
+else:
+    buffer_sensitivity_rows = []
 
 NEEDS_PROBABILITY_OUTPUTS = GENERATE_MAP_OUTPUTS or RUN_EXTERNAL_VALIDATION
 hybrid_result = run_hybrid_fold(
@@ -3434,18 +3724,40 @@ else:
     print("Map/risk-grade outputs skipped: GENERATE_MAP_OUTPUTS=0")
 
 if RUN_EXTERNAL_VALIDATION:
-    external_flood_fc, external_reference_summary = load_external_flood_reference()
+    external_references = load_external_flood_references()
+    external_reference_summaries = [summary for _, summary in external_references]
+    external_reference_summary = {
+        "used": any(summary.get("used") for summary in external_reference_summaries),
+        "reference_count": len(external_reference_summaries),
+        "references": external_reference_summaries,
+        "reason": None if any(
+            summary.get("used") for summary in external_reference_summaries
+        ) else "not_configured",
+    }
     print("External flood reference summary:", external_reference_summary)
     if external_reference_summary["used"]:
         if seoul_probability is None:
             raise ValueError("External validation requires selected model probability output.")
-        external_validation_rows = compute_external_flood_validation(
-            seoul_probability,
-            external_flood_fc,
-        )
-        print("External flood validation summary:")
-        for row in external_validation_rows:
-            print(row)
+        for external_flood_fc, reference_summary in external_references:
+            if not reference_summary.get("used"):
+                print("External validation skipped:", reference_summary.get("reason"))
+                continue
+            print(
+                "External flood validation reference:",
+                {
+                    "frequency": reference_summary.get("flood_frequency_label"),
+                    "dataset": reference_summary.get("official_dataset"),
+                    "feature_count": reference_summary.get("feature_count"),
+                },
+            )
+            rows = compute_external_flood_validation(
+                seoul_probability,
+                external_flood_fc,
+                reference_summary,
+            )
+            external_validation_rows.extend(rows)
+            for row in rows:
+                print(row)
     else:
         print("External validation skipped:", external_reference_summary["reason"])
 
@@ -3540,6 +3852,7 @@ metrics_payload = {
         "run_external_validation": RUN_EXTERNAL_VALIDATION,
         "official_flood_geojson": OFFICIAL_FLOOD_GEOJSON,
         "official_flood_ee_asset": OFFICIAL_FLOOD_EE_ASSET,
+        "official_flood_shp_freq_root_dir": OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR,
         "official_flood_shp_zip_dir": OFFICIAL_FLOOD_SHP_ZIP_DIR,
         "official_flood_shp_proj": OFFICIAL_FLOOD_SHP_PROJ,
         "official_flood_shp_simplify_m": OFFICIAL_FLOOD_SHP_SIMPLIFY_M,
