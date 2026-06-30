@@ -52,6 +52,7 @@ matplotlib==3.10.8
 matplotlib-inline==0.2.1
 narwhals==2.20.0
 numpy==2.4.4
+optuna>=4.0.0
 packaging==26.1
 pandas==2.3.3
 parso==0.8.6

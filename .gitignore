@@ -11,3 +11,5 @@ alphaearth-env/
 # Generated map outputs
 *.html
 seoul_flood/source/*.csv
+
+/seoul_flood/outputs
