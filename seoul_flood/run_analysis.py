@@ -8,6 +8,13 @@ import zipfile
 import ee
 import shapefile
 
+try:
+    import optuna
+    OPTUNA_IMPORT_ERROR = None
+except ImportError as error:
+    optuna = None
+    OPTUNA_IMPORT_ERROR = error
+
 
 # 분석 스크립트 기준 경로를 고정해, 어디서 실행해도 입력/출력 파일을 안정적으로 찾는다.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -439,6 +446,10 @@ CV_RESULTS_CSV = os.path.join(OUTPUT_DIR, "cv_results.csv")
 FEATURE_IMPORTANCE_CSV = os.path.join(OUTPUT_DIR, "feature_importance.csv")
 TOPK_SUMMARY_CSV = os.path.join(OUTPUT_DIR, "topk_summary.csv")
 EXTERNAL_VALIDATION_CSV = os.path.join(OUTPUT_DIR, "external_validation.csv")
+HYPERPARAMETER_TUNING_CSV = os.path.join(
+    OUTPUT_DIR,
+    "hyperparameter_tuning.csv",
+)
 
 # Earth Engine 서버 계산을 시작하기 위해 프로젝트를 초기화한다.
 ee.Initialize(project=PROJECT_ID)
@@ -789,16 +800,124 @@ INPUT_BANDS = (
 
 
 FINAL_MODEL_CONFIG = {
-    "name": "GradientTreeBoost",
-    "family": "gradient_tree_boost",
+    "name": "GradientTreeBoostSoftVoting",
+    "family": "gradient_tree_boost_soft_voting",
     "params": {
-        "numberOfTrees": 100,
-        "shrinkage": 0.05,
-        "samplingRate": 0.7,
-        "maxNodes": 32,
-        "seed": 13,
+        "numberOfTrees": int(os.environ.get("GTB_NUMBER_OF_TREES", "100")),
+        "shrinkage": float(os.environ.get("GTB_SHRINKAGE", "0.05")),
+        "samplingRate": float(os.environ.get("GTB_SAMPLING_RATE", "0.7")),
+        "maxNodes": int(os.environ.get("GTB_MAX_NODES", "32")),
+        "seeds": parse_int_list(os.environ.get("GTB_VOTING_SEEDS", "13,23,37")),
     },
 }
+if not FINAL_MODEL_CONFIG["params"]["seeds"]:
+    raise ValueError("GTB_VOTING_SEEDS must contain at least one integer seed.")
+
+RUN_HYPERPARAMETER_TUNING = os.environ.get(
+    "RUN_HYPERPARAMETER_TUNING",
+    "0",
+) == "1"
+GTB_TUNING_FOLDS = [
+    fold
+    for fold in parse_int_list(
+        os.environ.get(
+            "GTB_TUNING_FOLDS",
+            ",".join(str(fold) for fold in range(SPATIAL_FOLDS)),
+        )
+    )
+    if 0 <= fold < SPATIAL_FOLDS
+]
+GTB_TUNING_SEEDS = parse_int_list(
+    os.environ.get(
+        "GTB_TUNING_SEEDS",
+        str(FINAL_MODEL_CONFIG["params"]["seeds"][0]),
+    )
+)
+GTB_OPTUNA_TRIALS = int(os.environ.get("GTB_OPTUNA_TRIALS", "20"))
+GTB_OPTUNA_RANDOM_SEED = int(
+    os.environ.get("GTB_OPTUNA_RANDOM_SEED", "42")
+)
+GTB_OPTUNA_STARTUP_TRIALS = int(
+    os.environ.get("GTB_OPTUNA_STARTUP_TRIALS", "5")
+)
+GTB_OPTUNA_PRUNING = os.environ.get("GTB_OPTUNA_PRUNING", "1") == "1"
+GTB_OPTUNA_WARMUP_FOLDS = int(
+    os.environ.get("GTB_OPTUNA_WARMUP_FOLDS", "2")
+)
+GTB_OPTUNA_TREES_MIN = int(os.environ.get("GTB_OPTUNA_TREES_MIN", "50"))
+GTB_OPTUNA_TREES_MAX = int(os.environ.get("GTB_OPTUNA_TREES_MAX", "300"))
+GTB_OPTUNA_TREES_STEP = int(os.environ.get("GTB_OPTUNA_TREES_STEP", "25"))
+GTB_OPTUNA_SHRINKAGE_MIN = float(
+    os.environ.get("GTB_OPTUNA_SHRINKAGE_MIN", "0.01")
+)
+GTB_OPTUNA_SHRINKAGE_MAX = float(
+    os.environ.get("GTB_OPTUNA_SHRINKAGE_MAX", "0.15")
+)
+GTB_OPTUNA_SAMPLING_RATE_MIN = float(
+    os.environ.get("GTB_OPTUNA_SAMPLING_RATE_MIN", "0.5")
+)
+GTB_OPTUNA_SAMPLING_RATE_MAX = float(
+    os.environ.get("GTB_OPTUNA_SAMPLING_RATE_MAX", "1.0")
+)
+GTB_OPTUNA_MAX_NODES_CHOICES = parse_int_list(
+    os.environ.get("GTB_OPTUNA_MAX_NODES_CHOICES", "8,16,32,64")
+)
+GTB_TUNING_METRIC = os.environ.get(
+    "GTB_TUNING_METRIC",
+    "pr_auc_mean",
+).strip()
+GTB_TUNING_ALLOWED_METRICS = {
+    "accuracy_mean",
+    "balanced_accuracy_mean",
+    "f1_mean",
+    "kappa_mean",
+    "pr_auc_mean",
+    "precision_mean",
+    "recall_mean",
+    "roc_auc_mean",
+}
+if RUN_HYPERPARAMETER_TUNING:
+    tuning_lists = [
+        GTB_TUNING_FOLDS,
+        GTB_TUNING_SEEDS,
+        GTB_OPTUNA_MAX_NODES_CHOICES,
+    ]
+    if any(not values for values in tuning_lists):
+        raise ValueError("All GTB tuning lists must contain at least one value.")
+    if optuna is None:
+        raise ImportError(
+            "Optuna is required for hyperparameter tuning. "
+            "Install dependencies with: pip install -r requirements.txt"
+        ) from OPTUNA_IMPORT_ERROR
+    if GTB_TUNING_METRIC not in GTB_TUNING_ALLOWED_METRICS:
+        raise ValueError(
+            "GTB_TUNING_METRIC must be one of: "
+            + ", ".join(sorted(GTB_TUNING_ALLOWED_METRICS))
+        )
+    if GTB_OPTUNA_TRIALS <= 0:
+        raise ValueError("GTB_OPTUNA_TRIALS must be positive.")
+    if GTB_OPTUNA_STARTUP_TRIALS < 0:
+        raise ValueError("GTB_OPTUNA_STARTUP_TRIALS must be zero or positive.")
+    if GTB_OPTUNA_WARMUP_FOLDS < 0:
+        raise ValueError("GTB_OPTUNA_WARMUP_FOLDS must be zero or positive.")
+    if (
+        GTB_OPTUNA_TREES_MIN <= 0
+        or GTB_OPTUNA_TREES_MAX < GTB_OPTUNA_TREES_MIN
+        or GTB_OPTUNA_TREES_STEP <= 0
+    ):
+        raise ValueError("Invalid Optuna numberOfTrees range.")
+    if not (
+        0 < GTB_OPTUNA_SHRINKAGE_MIN <= GTB_OPTUNA_SHRINKAGE_MAX
+    ):
+        raise ValueError("Invalid Optuna shrinkage range.")
+    if not (
+        0 < GTB_OPTUNA_SAMPLING_RATE_MIN
+        <= GTB_OPTUNA_SAMPLING_RATE_MAX
+        <= 1
+    ):
+        raise ValueError("Invalid Optuna samplingRate range.")
+    if any(value <= 1 for value in GTB_OPTUNA_MAX_NODES_CHOICES):
+        raise ValueError("GTB_OPTUNA_MAX_NODES_CHOICES values must exceed 1.")
 
 
 # 지정된 train 또는 validation 영역에서 양성/음성 sample을 균형 있게 추출한다.
@@ -831,25 +950,71 @@ def sample_split(feature_image, input_bands, positive_mask, negative_mask, area_
     )
 
 
-# 최종 분석 모델인 Earth Engine Gradient Tree Boosting을 확률 출력 모드로 학습한다.
-def train_classifier(train_fc, input_bands):
-    params = FINAL_MODEL_CONFIG["params"]
+# 단일 Earth Engine Gradient Tree Boosting 모델을 확률 출력 모드로 학습한다.
+def train_gtb_classifier(train_fc, input_bands, seed, model_params=None):
+    params = model_params or FINAL_MODEL_CONFIG["params"]
     return (
         ee.Classifier.smileGradientTreeBoost(
             numberOfTrees=params["numberOfTrees"],
             shrinkage=params["shrinkage"],
             samplingRate=params["samplingRate"],
             maxNodes=params["maxNodes"],
-            seed=params["seed"],
+            seed=seed,
         )
         .setOutputMode("PROBABILITY")
         .train(train_fc, "label", input_bands)
     )
 
 
-# validation sample에 모델을 적용하고 threshold 0.5 기준 혼동행렬을 만든다.
+# 같은 GTB 구조를 seed만 다르게 여러 번 학습해 soft voting ensemble로 사용한다.
+def train_classifier(train_fc, input_bands, model_params=None, seeds=None):
+    params = model_params or FINAL_MODEL_CONFIG["params"]
+    classifier_seeds = seeds or params["seeds"]
+    return [
+        train_gtb_classifier(train_fc, input_bands, seed, params)
+        for seed in classifier_seeds
+    ]
+
+
+def as_classifier_list(classifiers):
+    return list(classifiers) if isinstance(classifiers, (list, tuple)) else [classifiers]
+
+
+def classify_fc_with_voting(fc, classifiers, output_name="probability"):
+    classifiers = as_classifier_list(classifiers)
+    classified = fc
+    probability_names = []
+    for index, classifier in enumerate(classifiers):
+        probability_name = f"{output_name}_{index}"
+        classified = classified.classify(classifier, probability_name)
+        probability_names.append(probability_name)
+
+    def _set_voted_probability(feature):
+        probability_sum = ee.Number(0)
+        for probability_name in probability_names:
+            probability_sum = probability_sum.add(ee.Number(feature.get(probability_name)))
+        return feature.set(output_name, probability_sum.divide(len(probability_names)))
+
+    return classified.map(_set_voted_probability)
+
+
+def classify_image_with_voting(feature_image, input_bands, classifiers, output_name="flood_prob"):
+    classifiers = as_classifier_list(classifiers)
+    probability_images = [
+        feature_image
+        .select(input_bands)
+        .classify(classifier, f"{output_name}_{index}")
+        .rename(f"{output_name}_{index}")
+        for index, classifier in enumerate(classifiers)
+    ]
+    if len(probability_images) == 1:
+        return probability_images[0].rename(output_name)
+    return ee.Image.cat(probability_images).reduce(ee.Reducer.mean()).rename(output_name)
+
+
+# validation sample에 voting 모델을 적용하고 threshold 0.5 기준 혼동행렬을 만든다.
 def evaluate_fc(fc, classifier):
-    evaluated = fc.classify(classifier, "probability").map(
+    evaluated = classify_fc_with_voting(fc, classifier, "probability").map(
         lambda f: f.set("predicted", ee.Number(f.get("probability")).gte(0.5).int())
     )
     return evaluated.errorMatrix("label", "predicted")
@@ -948,7 +1113,7 @@ def binary_metrics(labels, scores, threshold=0.5):
 
 # Earth Engine FeatureCollection 예측 결과를 Python 리스트로 가져와 metric을 계산한다.
 def sample_metrics(sample_fc, classifier):
-    evaluated = sample_fc.classify(classifier, "probability")
+    evaluated = classify_fc_with_voting(sample_fc, classifier, "probability")
     features = evaluated.select(["label", "probability"]).getInfo()["features"]
     labels = [int(feature["properties"]["label"]) for feature in features]
     scores = [float(feature["properties"]["probability"]) for feature in features]
@@ -1069,43 +1234,318 @@ def compute_hotspot_metrics(probability, validation_points):
     return [feature["properties"] for feature in metrics]
 
 
-# 모델이 어떤 feature를 많이 사용했는지 fold별 중요도를 가져온다.
+# voting에 참여한 모델들이 어떤 feature를 많이 사용했는지 평균 중요도를 가져온다.
 def classifier_importance(classifier, input_bands):
-    try:
-        explain_info = classifier.explain().getInfo()
-    except Exception as error:
-        print(f"Feature importance unavailable: {error}")
-        explain_info = {}
-    raw_importance = explain_info.get("importance", {})
-    importance = {band: float(raw_importance.get(band, 0)) for band in input_bands}
-    total = sum(importance.values())
-    normalized = {
-        band: (value / total if total else 0)
-        for band, value in importance.items()
+    classifiers = as_classifier_list(classifier)
+    importance_rows = []
+    normalized_rows = []
+    for index, single_classifier in enumerate(classifiers):
+        try:
+            explain_info = single_classifier.explain().getInfo()
+        except Exception as error:
+            print(f"Feature importance unavailable for voter {index}: {error}")
+            explain_info = {}
+        raw_importance = explain_info.get("importance", {})
+        importance = {
+            band: float(raw_importance.get(band, 0))
+            for band in input_bands
+        }
+        total = sum(importance.values())
+        normalized = {
+            band: (value / total if total else 0)
+            for band, value in importance.items()
+        }
+        importance_rows.append(importance)
+        normalized_rows.append(normalized)
+
+    importance_mean = {
+        band: sum(row.get(band, 0) for row in importance_rows) / len(importance_rows)
+        for band in input_bands
     }
-    return importance, normalized
+    normalized_mean = {
+        band: sum(row.get(band, 0) for row in normalized_rows) / len(normalized_rows)
+        for band in input_bands
+    }
+    return importance_mean, normalized_mean
+
+
+fold_sample_cache = {}
+
+
+def get_fold_samples(validation_fold):
+    if validation_fold in fold_sample_cache:
+        return fold_sample_cache[validation_fold]
+
+    fold_inputs = build_fold_inputs(validation_fold)
+    negative_mask = make_negative_mask(NEGATIVE_BUFFER_M)
+    samples = {
+        "fold_inputs": fold_inputs,
+        "train_fc": sample_split(
+            fold_inputs["feature_image"],
+            INPUT_BANDS,
+            fold_inputs["positive_train_mask"],
+            negative_mask,
+            fold_inputs["train_area_mask"],
+            700 + validation_fold,
+        ),
+        "valid_fc": sample_split(
+            fold_inputs["feature_image"],
+            INPUT_BANDS,
+            fold_inputs["positive_valid_mask"],
+            negative_mask,
+            fold_inputs["valid_area_mask"],
+            1700 + validation_fold,
+        ),
+    }
+    fold_sample_cache[validation_fold] = samples
+    return samples
+
+
+def kappa_from_binary_metrics(metrics):
+    sample_count = metrics["sample_count"]
+    if not sample_count:
+        return None
+
+    tp = metrics["true_positive"]
+    tn = metrics["true_negative"]
+    fp = metrics["false_positive"]
+    fn = metrics["false_negative"]
+    actual_negative = tn + fp
+    actual_positive = tp + fn
+    predicted_negative = tn + fn
+    predicted_positive = tp + fp
+    expected_accuracy = (
+        actual_negative * predicted_negative
+        + actual_positive * predicted_positive
+    ) / (sample_count * sample_count)
+    if expected_accuracy == 1:
+        return 0.0
+    return (metrics["accuracy"] - expected_accuracy) / (1 - expected_accuracy)
+
+
+def run_tuning_fold(validation_fold, model_params):
+    samples = get_fold_samples(validation_fold)
+    classifier = train_classifier(
+        samples["train_fc"],
+        INPUT_BANDS,
+        model_params=model_params,
+        seeds=GTB_TUNING_SEEDS,
+    )
+    valid_metrics = sample_metrics(samples["valid_fc"], classifier)
+    return {
+        "fold": validation_fold,
+        "valid_accuracy": valid_metrics["accuracy"],
+        "valid_kappa": kappa_from_binary_metrics(valid_metrics),
+        "valid_metrics": valid_metrics,
+    }
+
+
+def suggest_gtb_params(trial):
+    return {
+        "numberOfTrees": trial.suggest_int(
+            "numberOfTrees",
+            GTB_OPTUNA_TREES_MIN,
+            GTB_OPTUNA_TREES_MAX,
+            step=GTB_OPTUNA_TREES_STEP,
+        ),
+        "shrinkage": trial.suggest_float(
+            "shrinkage",
+            GTB_OPTUNA_SHRINKAGE_MIN,
+            GTB_OPTUNA_SHRINKAGE_MAX,
+            log=True,
+        ),
+        "samplingRate": trial.suggest_float(
+            "samplingRate",
+            GTB_OPTUNA_SAMPLING_RATE_MIN,
+            GTB_OPTUNA_SAMPLING_RATE_MAX,
+        ),
+        "maxNodes": trial.suggest_categorical(
+            "maxNodes",
+            GTB_OPTUNA_MAX_NODES_CHOICES,
+        ),
+    }
+
+
+def tuning_sort_key(row):
+    def _value(key, default=float("-inf")):
+        value = row.get(key)
+        return default if value is None else value
+
+    metric_std = row.get(GTB_TUNING_METRIC.replace("_mean", "_std"))
+    return (
+        _value(GTB_TUNING_METRIC),
+        -metric_std if metric_std is not None else float("-inf"),
+        _value("pr_auc_mean"),
+        _value("roc_auc_mean"),
+        _value("kappa_mean"),
+        _value("accuracy_mean"),
+    )
+
+
+def run_hyperparameter_tuning():
+    sampler = optuna.samplers.TPESampler(
+        seed=GTB_OPTUNA_RANDOM_SEED,
+        n_startup_trials=GTB_OPTUNA_STARTUP_TRIALS,
+    )
+    pruner = (
+        optuna.pruners.MedianPruner(
+            n_startup_trials=GTB_OPTUNA_STARTUP_TRIALS,
+            n_warmup_steps=GTB_OPTUNA_WARMUP_FOLDS,
+        )
+        if GTB_OPTUNA_PRUNING
+        else optuna.pruners.NopPruner()
+    )
+    study = optuna.create_study(
+        direction="maximize",
+        sampler=sampler,
+        pruner=pruner,
+        study_name="seoul_flood_gtb",
+    )
+    print(
+        "Optuna hyperparameter tuning:",
+        {
+            "trials": GTB_OPTUNA_TRIALS,
+            "folds": GTB_TUNING_FOLDS,
+            "seeds": GTB_TUNING_SEEDS,
+            "selection_metric": GTB_TUNING_METRIC,
+            "sampler": "TPESampler",
+            "pruning": GTB_OPTUNA_PRUNING,
+        },
+    )
+
+    def objective(trial):
+        model_params = suggest_gtb_params(trial)
+        print(
+            f"Optuna trial {trial.number + 1}/{GTB_OPTUNA_TRIALS}:",
+            model_params,
+        )
+        fold_rows = []
+        for step, fold in enumerate(GTB_TUNING_FOLDS):
+            fold_rows.append(run_tuning_fold(fold, model_params))
+            partial_summary = summarize_cv(fold_rows)
+            partial_score = partial_summary.get(GTB_TUNING_METRIC)
+            if partial_score is None:
+                continue
+            trial.report(partial_score, step=step)
+            trial.set_user_attr("summary", to_json_safe(partial_summary))
+            trial.set_user_attr("evaluated_folds", step + 1)
+            if GTB_OPTUNA_PRUNING and trial.should_prune():
+                print(
+                    "Pruned Optuna trial:",
+                    {
+                        "trial": trial.number,
+                        "evaluated_folds": step + 1,
+                        GTB_TUNING_METRIC: partial_score,
+                    },
+                )
+                raise optuna.TrialPruned()
+
+        summary = summarize_cv(fold_rows)
+        score = summary.get(GTB_TUNING_METRIC)
+        if score is None:
+            raise ValueError(
+                f"Tuning metric {GTB_TUNING_METRIC} was not produced."
+            )
+        trial.set_user_attr("summary", to_json_safe(summary))
+        trial.set_user_attr("evaluated_folds", len(fold_rows))
+        print(
+            {
+                "trial": trial.number,
+                **model_params,
+                GTB_TUNING_METRIC: score,
+                "kappa_mean": summary.get("kappa_mean"),
+                "roc_auc_mean": summary.get("roc_auc_mean"),
+            }
+        )
+        return score
+
+    study.optimize(objective, n_trials=GTB_OPTUNA_TRIALS)
+
+    rows = []
+    for trial in study.trials:
+        summary = trial.user_attrs.get("summary", {})
+        duration_seconds = (
+            trial.duration.total_seconds()
+            if trial.duration is not None
+            else None
+        )
+        rows.append(
+            {
+                "config_id": trial.number + 1,
+                "trial_number": trial.number,
+                "state": trial.state.name.lower(),
+                **trial.params,
+                "objective_value": trial.value,
+                "selection_metric": GTB_TUNING_METRIC,
+                "folds": GTB_TUNING_FOLDS,
+                "evaluated_folds": trial.user_attrs.get("evaluated_folds", 0),
+                "seeds": GTB_TUNING_SEEDS,
+                "classifier_count_per_fold": len(GTB_TUNING_SEEDS),
+                "duration_seconds": duration_seconds,
+                **summary,
+            }
+        )
+
+    completed_rows = [
+        row for row in rows
+        if row["state"] == "complete"
+    ]
+    ranked_rows = sorted(completed_rows, key=tuning_sort_key, reverse=True)
+    rank_by_trial = {
+        row["trial_number"]: rank
+        for rank, row in enumerate(ranked_rows, start=1)
+    }
+    for row in rows:
+        row["rank"] = rank_by_trial.get(row["trial_number"])
+        row["selected"] = row["trial_number"] == study.best_trial.number
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            row["rank"] is None,
+            row["rank"] if row["rank"] is not None else row["trial_number"],
+        ),
+    )
+
+    best_row = next(row for row in rows if row["selected"])
+    selected_params = {
+        "numberOfTrees": best_row["numberOfTrees"],
+        "shrinkage": best_row["shrinkage"],
+        "samplingRate": best_row["samplingRate"],
+        "maxNodes": best_row["maxNodes"],
+    }
+    FINAL_MODEL_CONFIG["params"].update(selected_params)
+    print(
+        "Selected hyperparameters:",
+        {
+            **selected_params,
+            GTB_TUNING_METRIC: best_row[GTB_TUNING_METRIC],
+        },
+    )
+    return rows, {
+        "used": True,
+        "method": "optuna",
+        "sampler": "TPESampler",
+        "pruner": "MedianPruner" if GTB_OPTUNA_PRUNING else "NopPruner",
+        "trial_count": len(study.trials),
+        "completed_trial_count": len(completed_rows),
+        "pruned_trial_count": sum(
+            row["state"] == "pruned"
+            for row in rows
+        ),
+        "selection_metric": GTB_TUNING_METRIC,
+        "folds": GTB_TUNING_FOLDS,
+        "seeds": GTB_TUNING_SEEDS,
+        "selected_params": selected_params,
+        "best_result": best_row,
+    }
 
 
 # 하나의 validation fold에 대해 sample 추출, GTB 학습, validation 평가, feature importance 계산을 수행한다.
 def run_fold(validation_fold):
-    fold_inputs = build_fold_inputs(validation_fold)
-    negative_mask = make_negative_mask(NEGATIVE_BUFFER_M)
-    train_fc = sample_split(
-        fold_inputs["feature_image"],
-        INPUT_BANDS,
-        fold_inputs["positive_train_mask"],
-        negative_mask,
-        fold_inputs["train_area_mask"],
-        700 + validation_fold,
-    )
-    valid_fc = sample_split(
-        fold_inputs["feature_image"],
-        INPUT_BANDS,
-        fold_inputs["positive_valid_mask"],
-        negative_mask,
-        fold_inputs["valid_area_mask"],
-        1700 + validation_fold,
-    )
+    samples = get_fold_samples(validation_fold)
+    fold_inputs = samples["fold_inputs"]
+    train_fc = samples["train_fc"]
+    valid_fc = samples["valid_fc"]
     classifier = train_classifier(train_fc, INPUT_BANDS)
     ee_valid_confusion = evaluate_fc(valid_fc, classifier)
     valid_confusion = ee_valid_confusion.getInfo()
@@ -1117,10 +1557,12 @@ def run_fold(validation_fold):
         INPUT_BANDS,
     )
     probability = (
-        fold_inputs["feature_image"]
-        .select(INPUT_BANDS)
-        .classify(classifier, "flood_prob")
-        .rename("flood_prob")
+        classify_image_with_voting(
+            fold_inputs["feature_image"],
+            INPUT_BANDS,
+            classifier,
+            "flood_prob",
+        )
         .clip(seoul)
     )
     hotspot_metrics = compute_hotspot_metrics(
@@ -1144,6 +1586,7 @@ def run_fold(validation_fold):
         "importance": importance,
         "importance_normalized": normalized_importance,
         "hotspot_metrics": hotspot_metrics,
+        "classifier_count": len(as_classifier_list(classifier)),
         "classifier": classifier,
         "probability": probability,
     }
@@ -1290,6 +1733,7 @@ def sanitize_fold_result(row):
         "valid_accuracy": row["valid_accuracy"],
         "valid_kappa": row["valid_kappa"],
         "valid_metrics": row["valid_metrics"],
+        "classifier_count": row.get("classifier_count"),
         "hotspot_point_recall": {
             f"top_{int(metric['top_percent'])}_percent": metric["evaluated_point_recall"]
             for metric in row.get("hotspot_metrics", [])
@@ -1860,6 +2304,15 @@ def main():
     print("Positive fold histogram:", positive_data["fold_histogram"])
     print("AlphaEarth tiles:", alpha_tile_count)
 
+    tuning_rows = []
+    tuning_summary = {
+        "used": False,
+        "reason": "not_requested",
+    }
+    if RUN_HYPERPARAMETER_TUNING:
+        tuning_rows, tuning_summary = run_hyperparameter_tuning()
+    print("Final model parameters:", FINAL_MODEL_CONFIG["params"])
+
     cv_rows = [run_fold(fold) for fold in range(SPATIAL_FOLDS)]
     cv_summary = summarize_cv(cv_rows)
     importance_summary = summarize_importance(cv_rows)
@@ -1880,6 +2333,29 @@ def main():
             "positive_buffer_m": POSITIVE_BUFFER_M,
             "negative_buffer_m": NEGATIVE_BUFFER_M,
             "hotspot_eval_percentiles": HOTSPOT_EVAL_PERCENTILES,
+            "run_hyperparameter_tuning": RUN_HYPERPARAMETER_TUNING,
+            "gtb_tuning_metric": GTB_TUNING_METRIC,
+            "gtb_tuning_folds": GTB_TUNING_FOLDS,
+            "gtb_tuning_seeds": GTB_TUNING_SEEDS,
+            "gtb_optuna_trials": GTB_OPTUNA_TRIALS,
+            "gtb_optuna_random_seed": GTB_OPTUNA_RANDOM_SEED,
+            "gtb_optuna_startup_trials": GTB_OPTUNA_STARTUP_TRIALS,
+            "gtb_optuna_pruning": GTB_OPTUNA_PRUNING,
+            "gtb_optuna_warmup_folds": GTB_OPTUNA_WARMUP_FOLDS,
+            "gtb_optuna_trees_range": [
+                GTB_OPTUNA_TREES_MIN,
+                GTB_OPTUNA_TREES_MAX,
+                GTB_OPTUNA_TREES_STEP,
+            ],
+            "gtb_optuna_shrinkage_range": [
+                GTB_OPTUNA_SHRINKAGE_MIN,
+                GTB_OPTUNA_SHRINKAGE_MAX,
+            ],
+            "gtb_optuna_sampling_rate_range": [
+                GTB_OPTUNA_SAMPLING_RATE_MIN,
+                GTB_OPTUNA_SAMPLING_RATE_MAX,
+            ],
+            "gtb_optuna_max_nodes_choices": GTB_OPTUNA_MAX_NODES_CHOICES,
             "reference_geojson": REFERENCE_GEOJSON,
             "pump_station_csv": PUMP_STATION_CSV,
             "sewer_sensor_gu_stats_csv": SEWER_SENSOR_GU_STATS_CSV,
@@ -1911,6 +2387,10 @@ def main():
         "topk": {
             "cv_summary": topk_summary,
         },
+        "hyperparameter_tuning": {
+            **tuning_summary,
+            "results": tuning_rows,
+        },
         "external_validation": {
             "reference": external_reference_summary,
             "overlap_metrics": external_validation_rows,
@@ -1922,6 +2402,7 @@ def main():
             "feature_importance_csv": FEATURE_IMPORTANCE_CSV,
             "topk_summary_csv": TOPK_SUMMARY_CSV,
             "external_validation_csv": EXTERNAL_VALIDATION_CSV,
+            "hyperparameter_tuning_csv": HYPERPARAMETER_TUNING_CSV,
         },
     }
 
@@ -1930,6 +2411,7 @@ def main():
     write_csv(FEATURE_IMPORTANCE_CSV, importance_summary)
     write_csv(TOPK_SUMMARY_CSV, topk_summary)
     write_csv(EXTERNAL_VALIDATION_CSV, external_validation_rows)
+    write_csv(HYPERPARAMETER_TUNING_CSV, tuning_rows)
     print("Validation summary:", cv_summary)
     print("Top-k summary:", topk_summary)
     if RUN_EXTERNAL_VALIDATION:
