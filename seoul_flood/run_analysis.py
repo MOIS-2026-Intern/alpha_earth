@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import re
+import sys
 import tempfile
 import zipfile
 
@@ -1605,6 +1606,62 @@ def run_fold(validation_fold):
     return result
 
 
+def run_final_model():
+    """Train the final model on all available Seoul flood positives."""
+    alpha_score = make_alpha_score(positive_points)
+    feature_image = static_features["image"].addBands(alpha_score)
+    positive_mask = ee.Image.constant(0).byte().paint(
+        positive_points.map(lambda f: f.buffer(POSITIVE_BUFFER_M)),
+        1,
+    )
+    analysis_mask = ee.Image.constant(1).clip(seoul)
+    negative_mask = make_negative_mask(NEGATIVE_BUFFER_M)
+    train_fc = sample_split(
+        feature_image,
+        INPUT_BANDS,
+        positive_mask,
+        negative_mask,
+        analysis_mask,
+        2700,
+    )
+    classifier = train_classifier(train_fc, INPUT_BANDS)
+    probability = (
+        classify_image_with_voting(
+            feature_image,
+            INPUT_BANDS,
+            classifier,
+            "flood_prob",
+        )
+        .clip(seoul)
+    )
+    importance, normalized_importance = classifier_importance(
+        classifier,
+        INPUT_BANDS,
+    )
+    result = {
+        "model": FINAL_MODEL_CONFIG["name"],
+        "model_family": FINAL_MODEL_CONFIG["family"],
+        "train_positive_count": positive_points.size().getInfo(),
+        "train_sample_count": train_fc.size().getInfo(),
+        "train_label_histogram": train_fc.aggregate_histogram("label").getInfo(),
+        "importance": importance,
+        "importance_normalized": normalized_importance,
+        "classifier_count": len(as_classifier_list(classifier)),
+        "classifier": classifier,
+        "feature_image": feature_image,
+        "probability": probability,
+    }
+    print(
+        {
+            "model": result["model"],
+            "training_scope": "all_seoul_positive_points",
+            "train_sample_count": result["train_sample_count"],
+            "classifier_count": result["classifier_count"],
+        }
+    )
+    return result
+
+
 # fold별 결과를 평균/표준편차로 요약하기 위한 작은 통계 유틸리티다.
 def mean(values):
     return sum(values) / max(len(values), 1)
@@ -2297,8 +2354,23 @@ def run_external_validation(probability):
     return reference_summary, rows
 
 
+def run_final_map_outputs(analysis_result):
+    try:
+        from . import create_final_flood_risk_map
+    except ImportError:
+        import create_final_flood_risk_map
+
+    return create_final_flood_risk_map.create_map_outputs(
+        analysis_result,
+        sys.modules[__name__],
+    )
+
+
 # 전체 실행 진입점: 5-fold 공간 검증을 돌리고 metric/importance/output 경로를 저장한다.
-def main():
+def main(generate_final_map=None):
+    if generate_final_map is None:
+        generate_final_map = os.environ.get("GENERATE_FINAL_MAP", "1") == "1"
+
     print("Analysis model bands:", INPUT_BANDS)
     print("Final model:", FINAL_MODEL_CONFIG["name"])
     print("Positive fold histogram:", positive_data["fold_histogram"])
@@ -2318,8 +2390,9 @@ def main():
     importance_summary = summarize_importance(cv_rows)
     topk_summary = summarize_hotspot_metrics(cv_rows)
     cv_result_rows = [sanitize_fold_result(row) for row in cv_rows]
+    final_model = run_final_model()
     external_reference_summary, external_validation_rows = run_external_validation(
-        cv_rows[0]["probability"]
+        final_model["probability"]
     )
 
     metrics_payload = {
@@ -2361,6 +2434,7 @@ def main():
             "sewer_sensor_gu_stats_csv": SEWER_SENSOR_GU_STATS_CSV,
             "sewer_level_sensor_csv": SEWER_LEVEL_SENSOR_CSV,
             "run_external_validation": RUN_EXTERNAL_VALIDATION,
+            "generate_final_map": generate_final_map,
             "official_flood_shp_freq_root_dir": OFFICIAL_FLOOD_SHP_FREQ_ROOT_DIR,
             "official_flood_shp_zip_dir": OFFICIAL_FLOOD_SHP_ZIP_DIR,
             "official_flood_shp_proj": OFFICIAL_FLOOD_SHP_PROJ,
@@ -2378,6 +2452,13 @@ def main():
             "name": "Hybrid-plus-drainage-gu-stats",
             "classifier": FINAL_MODEL_CONFIG,
             "bands": INPUT_BANDS,
+            "final_training": {
+                "scope": "all_seoul_positive_points",
+                "train_positive_count": final_model["train_positive_count"],
+                "train_sample_count": final_model["train_sample_count"],
+                "train_label_histogram": final_model["train_label_histogram"],
+                "classifier_count": final_model["classifier_count"],
+            },
         },
         "validation": {
             "summary": cv_summary,
@@ -2406,6 +2487,24 @@ def main():
         },
     }
 
+    analysis_result = {
+        "metrics_payload": metrics_payload,
+        "cv_rows": cv_rows,
+        "cv_summary": cv_summary,
+        "importance_summary": importance_summary,
+        "topk_summary": topk_summary,
+        "final_model": final_model,
+        "external_reference_summary": external_reference_summary,
+        "external_validation_rows": external_validation_rows,
+        "final_map_outputs": {},
+    }
+    if generate_final_map:
+        final_map_outputs = run_final_map_outputs(analysis_result)
+        metrics_payload["outputs"].update(final_map_outputs)
+        analysis_result["final_map_outputs"] = final_map_outputs
+    else:
+        print("Final map generation skipped: GENERATE_FINAL_MAP=0")
+
     write_json(METRICS_JSON, metrics_payload)
     write_csv(CV_RESULTS_CSV, cv_result_rows)
     write_csv(FEATURE_IMPORTANCE_CSV, importance_summary)
@@ -2417,6 +2516,7 @@ def main():
     if RUN_EXTERNAL_VALIDATION:
         print("External validation references:", external_reference_summary)
     print("Saved:", metrics_payload["outputs"])
+    return analysis_result
 
 
 if __name__ == "__main__":
