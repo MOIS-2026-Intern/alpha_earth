@@ -55,3 +55,18 @@ earthengine authenticate
 - `955-1040`: 5-fold 결과 평균/표준편차 요약, feature importance 요약, 저장용 결과 정리
 - `1043-1101`: 전체 실행 진입점, 5-fold 반복 실행, `metrics.json`/`cv_results.csv`/`feature_importance.csv` 저장
 
+
+# 모델 실행 및 결과물
+### 실행 방법
+터미널에서 아래 명령어 실행
+```bash
+python seoul_floold/run_analysis.py
+```
+
+`run_analysis.py` 내에서 `create_final_flood_risk_map.py` 도 함께 실행됨
+
+### 결과물
+- 지도 : seoul_flood_risk_final.html
+- 구 단위 위험도 5%를 포함한 개수 : outputs/analysis/top5_red_points_by_gu.csv
+
+
