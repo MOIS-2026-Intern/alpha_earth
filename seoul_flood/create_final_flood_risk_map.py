@@ -9,11 +9,13 @@ import geemap
 run_analysis = None
 
 
+# run_analysis 모듈 참조를 외부에서 주입해 순환 import를 피한다.
 def configure(run_analysis_module):
     global run_analysis
     run_analysis = run_analysis_module
 
 
+# 주입된 run_analysis 모듈이 없으면 현재 실행 방식에 맞게 import한다.
 def get_run_analysis():
     global run_analysis
     if run_analysis is None:
@@ -25,6 +27,7 @@ def get_run_analysis():
     return run_analysis
 
 
+# 쉼표로 구분된 환경변수 값을 정수 리스트로 변환한다.
 def parse_int_list(raw_value):
     return [
         int(value.strip())
@@ -33,6 +36,7 @@ def parse_int_list(raw_value):
     ]
 
 
+# 최종 HTML 지도 저장 경로를 환경변수 또는 기본값으로 계산한다.
 def output_html_path():
     analysis = get_run_analysis()
     return analysis.resolve_output_path(
@@ -40,6 +44,7 @@ def output_html_path():
     )
 
 
+# 구별 상위 hotspot 순위 CSV 저장 경로를 계산한다.
 def top5_ranking_csv_path():
     analysis = get_run_analysis()
     return os.environ.get(
@@ -81,6 +86,7 @@ if len(RISK_GRADE_NAMES) != RISK_GRADE_COUNT:
     raise ValueError("RISK_GRADE_NAMES must match the number of risk grades.")
 
 
+# 확률 이미지를 분위수 기준 위험 등급 raster와 등급별 면적으로 변환한다.
 def build_risk_grade(probability):
     minmax_info = probability.reduceRegion(
         reducer=ee.Reducer.minMax(),
@@ -157,6 +163,7 @@ def build_risk_grade(probability):
     return risk_grade, thresholds, grade_summaries
 
 
+# 위험 등급 요약을 geemap legend에 넣을 색상/라벨 dict로 변환한다.
 def build_risk_grade_legend(grade_summaries):
     legend = {}
     for row in grade_summaries:
@@ -166,6 +173,7 @@ def build_risk_grade_legend(grade_summaries):
     return legend
 
 
+# geemap이 만든 HTML에 고정형 위험 등급 legend를 삽입한다.
 def inject_static_legend(html_path, title, legend_dict):
     items_html = "\n".join(
         (
@@ -226,6 +234,7 @@ def inject_static_legend(html_path, title, legend_dict):
         f.write(content)
 
 
+# geemap HTML에서 불필요한 widget control 상태를 제거한다.
 def sanitize_exported_widget_controls(html_path):
     with open(html_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -285,6 +294,7 @@ def sanitize_exported_widget_controls(html_path):
         f.write(content)
 
 
+# 확률 이미지에서 특정 분위수 threshold 값을 계산한다.
 def percentile_threshold(probability, percentile):
     threshold_info = probability.reduceRegion(
         reducer=ee.Reducer.percentile([percentile]),
@@ -295,6 +305,7 @@ def percentile_threshold(probability, percentile):
     return threshold_info[f"flood_prob_p{percentile}"]
 
 
+# 서울 자치구 ADM2 feature에 한국어 구 이름을 붙여 반환한다.
 def seoul_gu_feature_collection():
     shape_to_gu = {
         shape_name: gu_name
@@ -309,12 +320,14 @@ def seoul_gu_feature_collection():
         .filter(ee.Filter.inList("shapeName", shape_names))
     )
 
+    # ADM2 shapeName을 한국어 자치구명 속성으로 바꿔 붙인다.
     def _set_gu_name(feature):
         return feature.set("gu_name", shape_to_gu_dict.get(feature.get("shapeName")))
 
     return adm2.map(_set_gu_name)
 
 
+# Earth Engine reduce 결과에서 sum suffix까지 고려해 통계값을 읽는다.
 def normalize_stat_value(props, key):
     value = props.get(key)
     if value is None:
@@ -322,6 +335,7 @@ def normalize_stat_value(props, key):
     return value or 0
 
 
+# 상위 hotspot mask를 자치구별로 집계해 red point 순위를 만든다.
 def compute_top_hotspot_rankings(hotspots):
     red_point_stats = (
         ee.Image.constant(1)
@@ -356,6 +370,7 @@ def compute_top_hotspot_rankings(hotspots):
     return rows
 
 
+# 확률/위험등급/hotspot layer를 HTML 지도 파일로 저장한다.
 def save_map(probability, risk_grade, hotspots, risk_grade_legend):
     centroid = run_analysis.seoul.centroid().coordinates().getInfo()
     lon, lat = centroid[0], centroid[1]
@@ -398,6 +413,7 @@ def save_map(probability, risk_grade, hotspots, risk_grade_legend):
     return output_html
 
 
+# 분석 결과의 최종 모델로 지도와 구별 hotspot CSV 결과물을 생성한다.
 def create_map_outputs(analysis_result, run_analysis_module=None):
     if run_analysis_module is not None:
         configure(run_analysis_module)
@@ -447,6 +463,7 @@ def create_map_outputs(analysis_result, run_analysis_module=None):
     }
 
 
+# 단독 실행 시 run_analysis를 먼저 돌리고 최종 지도 결과물을 생성한다.
 def main():
     analysis = get_run_analysis()
     analysis_result = analysis.main(generate_final_map=False)
